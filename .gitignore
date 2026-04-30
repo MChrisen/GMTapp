@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Vite
+.vite/
+
+# Logs & local caches
+*.log
+.npm-cache/
+.gmt-preview.log
+.gmt-preview.pid
+
+# Environment (secrets — never commit real keys)
+.env
+.env.*.local
+
+# OS
+.DS_Store
+
+# Editor (optional — uncomment if you prefer not to share IDE settings)
+# .idea/
+# .vscode/
