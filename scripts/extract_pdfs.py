@@ -21,6 +21,7 @@ PDFS = [
     ("lektion-10", "Lektioner/Lektion_10_compressed.pdf"),
     ("lektion-11", "Lektioner/Lektion_11_compressed.pdf"),
     ("lektion-12", "Lektioner/Lektion_12_compressed.pdf"),
+    ("lektion-13", "Lektioner/Lektion_13_compressed.pdf"),
     ("exam-2023", "Tidligere Eksamensæt/GMT_eksamen_juni-2023_løsninger.pdf"),
     ("exam-2024", "Tidligere Eksamensæt/GMT-eksamen-juni-2024-løsninger.pdf"),
     ("exam-2025", "Tidligere Eksamensæt/GMT_eksamen_juni-2025_løsninger.pdf"),
@@ -61,6 +62,17 @@ KEYWORDS = [
     "tryk",
     "varme",
     "varmeledning",
+    "carnot",
+    "entropi",
+    "nyttevirkning",
+    "varmekraftmaskine",
+    "varmepumpe",
+    "reversibel",
+    "irreversibel",
+    "kelvin",
+    "clausius",
+    "otto",
+    "diesel",
 ]
 
 UI_NOISE_PATTERNS = [

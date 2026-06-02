@@ -49,6 +49,8 @@ type ProblemsMode = 'examples' | 'exam';
 type ReferenceMode = 'tools' | 'sources';
 
 const FORMULAS_MODE_STORAGE_KEY = 'gmt:formulas-mode';
+const PROBLEMS_MODE_STORAGE_KEY = 'gmt:problems-mode';
+const REFERENCE_MODE_STORAGE_KEY = 'gmt:reference-mode';
 
 function readStoredFormulasMode(): FormulasMode {
   if (typeof window === 'undefined') return 'cards';
@@ -61,6 +63,28 @@ function readStoredFormulasMode(): FormulasMode {
     /* ignore */
   }
   return 'cards';
+}
+
+function readStoredProblemsMode(): ProblemsMode {
+  if (typeof window === 'undefined') return 'examples';
+  try {
+    const raw = sessionStorage.getItem(PROBLEMS_MODE_STORAGE_KEY);
+    if (raw === 'examples' || raw === 'exam') return raw;
+  } catch {
+    /* ignore */
+  }
+  return 'examples';
+}
+
+function readStoredReferenceMode(): ReferenceMode {
+  if (typeof window === 'undefined') return 'tools';
+  try {
+    const raw = sessionStorage.getItem(REFERENCE_MODE_STORAGE_KEY);
+    if (raw === 'tools' || raw === 'sources') return raw;
+  } catch {
+    /* ignore */
+  }
+  return 'tools';
 }
 
 const categories = Array.from(new Set(formulasWithExamples.map((formula) => formula.category)));
@@ -273,8 +297,8 @@ function App() {
   const [canGoBack, setCanGoBack] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [formulasMode, setFormulasMode] = useState<FormulasMode>(readStoredFormulasMode);
-  const [problemsMode, setProblemsMode] = useState<ProblemsMode>('examples');
-  const [referenceMode, setReferenceMode] = useState<ReferenceMode>('tools');
+  const [problemsMode, setProblemsMode] = useState<ProblemsMode>(readStoredProblemsMode);
+  const [referenceMode, setReferenceMode] = useState<ReferenceMode>(readStoredReferenceMode);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const searchPopoverRef = useRef<HTMLDivElement | null>(null);
   const navHistoryRef = useRef<NavSnapshot[]>([]);
@@ -424,6 +448,22 @@ function App() {
   }, [formulasMode]);
 
   useEffect(() => {
+    try {
+      sessionStorage.setItem(PROBLEMS_MODE_STORAGE_KEY, problemsMode);
+    } catch {
+      /* ignore */
+    }
+  }, [problemsMode]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(REFERENCE_MODE_STORAGE_KEY, referenceMode);
+    } catch {
+      /* ignore */
+    }
+  }, [referenceMode]);
+
+  useEffect(() => {
     const raw = sessionStorage.getItem('gmt:nav-state');
     restoredSessionRef.current = true;
     if (!raw) return;
@@ -483,6 +523,9 @@ function App() {
 
   return (
     <div className={`app-shell${examMode ? ' exam-mode' : ''}`}>
+      <a className="skip-link" href="#view-stage">
+        Spring til indhold
+      </a>
       <header className="app-chrome">
         <div className="chrome-copy">
           <div className="status-pill">
@@ -540,6 +583,7 @@ function App() {
               className={view === id ? 'active' : ''}
               type="button"
               data-view={id}
+              aria-current={view === id ? 'page' : undefined}
               onClick={() => setView(id)}
             >
               <Icon size={16} aria-hidden="true" />
@@ -553,7 +597,7 @@ function App() {
 
         <section className="content-canvas">
           <div className="command-area">
-            <section className="search-panel command-bar">
+            <section className="search-panel command-bar" role="search">
               <div className="command-row">
                 <label htmlFor="search" className="search-title">Universel søgning</label>
                 <div className="search-input-wrap">
@@ -562,6 +606,10 @@ function App() {
                     id="search"
                     ref={searchInputRef}
                     value={query}
+                    role="combobox"
+                    aria-expanded={hasQuery && isSearchOpen}
+                    aria-controls="search-results-panel"
+                    aria-autocomplete="list"
                     onChange={(event) => {
                       const next = event.target.value;
                       setQuery(next);
@@ -631,13 +679,13 @@ function App() {
             </section>
 
             {hasQuery && isSearchOpen && (
-              <div className="search-popover" ref={searchPopoverRef}>
+              <div className="search-popover" ref={searchPopoverRef} id="search-results-panel">
                 <UniversalSearchResults state={state} />
               </div>
             )}
           </div>
 
-          <main className="view-stage">
+          <main className="view-stage" id="view-stage" tabIndex={-1}>
             {view === 'overview' && (
               <Overview
                 state={state}
@@ -815,8 +863,20 @@ function UniversalSearchResults({ state }: { state: AppState }) {
   }, [query]);
 
   useEffect(() => {
+    document.querySelector('.search-results .keyboard-active')?.scrollIntoView({ block: 'nearest' });
+  }, [activeIndex]);
+
+  useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (!keyboardTargets.length || document.activeElement?.tagName === 'INPUT') return;
+      if (!keyboardTargets.length) return;
+      const active = document.activeElement;
+      const inSearchFlow = active?.closest('.command-area') != null;
+      if (
+        (active?.tagName === 'INPUT' || active?.tagName === 'TEXTAREA' || active?.tagName === 'SELECT') &&
+        !inSearchFlow
+      ) {
+        return;
+      }
       if (event.key === 'ArrowDown') {
         event.preventDefault();
         setActiveIndex((current) => Math.min(current + 1, keyboardTargets.length - 1));
@@ -832,6 +892,8 @@ function UniversalSearchResults({ state }: { state: AppState }) {
     return () => window.removeEventListener('keydown', handler);
   }, [activeIndex, keyboardTargets]);
 
+  const kbClass = (index: number) => (activeIndex === index ? ' keyboard-active' : '');
+
   return (
     <section className="search-results">
       <header className="search-results-head">
@@ -839,10 +901,17 @@ function UniversalSearchResults({ state }: { state: AppState }) {
         <span className="muted small">
           {results.formulas.length} formler · {results.patterns.length} problemtyper · {results.calculators.length} beregnere ·{' '}
           {results.examples.length} eksempler · {results.examQuestions.length} eksamensmatch · {results.pdfHits.length} PDF-træf
+          {keyboardTargets.length > 0 && (
+            <> · <kbd>↑</kbd>/<kbd>↓</kbd> + <kbd>Enter</kbd> vælger</>
+          )}
         </span>
       </header>
+      {(() => {
+        let ki = 0;
+        return (
+          <>
       {bestMatch && (
-        <button type="button" className={`best-match-card${activeIndex === 0 ? ' keyboard-active' : ''}`} onClick={bestMatch.action}>
+        <button type="button" className={`best-match-card${kbClass(ki++)}`} onClick={bestMatch.action}>
           <span className="tag">Bedste næste klik · {bestMatch.label}</span>
           <strong><HighlightedText text={bestMatch.title} query={query} /></strong>
           <small>Åbn dette først, hvis du vil hurtigst videre.</small>
@@ -852,7 +921,7 @@ function UniversalSearchResults({ state }: { state: AppState }) {
       <div className="results-grid">
         <ResultGroup title="Formler" count={results.formulas.length}>
           {results.formulas.slice(0, 8).map((formula) => (
-            <button key={formula.id} type="button" className="result-card" onClick={() => selectFormula(formula.id)}>
+            <button key={formula.id} type="button" className={`result-card${kbClass(ki++)}`} onClick={() => selectFormula(formula.id)}>
               <header>
                 <strong><HighlightedText text={formula.name} query={query} /></strong>
                 <span className="tag">{formula.category}</span>
@@ -865,7 +934,7 @@ function UniversalSearchResults({ state }: { state: AppState }) {
 
         <ResultGroup title="Problemtyper" count={results.patterns.length}>
           {results.patterns.slice(0, 6).map((pattern) => (
-            <button key={pattern.id} type="button" className="result-card" onClick={() => selectPattern(pattern.id)}>
+            <button key={pattern.id} type="button" className={`result-card${kbClass(ki++)}`} onClick={() => selectPattern(pattern.id)}>
               <header>
                 <strong><HighlightedText text={pattern.title} query={query} /></strong>
               </header>
@@ -877,7 +946,7 @@ function UniversalSearchResults({ state }: { state: AppState }) {
 
         <ResultGroup title="Beregnere" count={results.calculators.length}>
           {results.calculators.slice(0, 6).map((calculator) => (
-            <button key={calculator.id} type="button" className="result-card" onClick={() => selectCalculator(calculator.id)}>
+            <button key={calculator.id} type="button" className={`result-card${kbClass(ki++)}`} onClick={() => selectCalculator(calculator.id)}>
               <header>
                 <strong><HighlightedText text={calculator.title} query={query} /></strong>
               </header>
@@ -889,7 +958,7 @@ function UniversalSearchResults({ state }: { state: AppState }) {
 
         <ResultGroup title="Eksempler" count={results.examples.length}>
           {results.examples.slice(0, 6).map((example) => (
-            <button key={example.id} type="button" className="result-card" onClick={() => selectExample(example.id)}>
+            <button key={example.id} type="button" className={`result-card${kbClass(ki++)}`} onClick={() => selectExample(example.id)}>
               <header>
                 <strong><HighlightedText text={example.title} query={query} /></strong>
                 <span className="tag">{example.difficulty}</span>
@@ -901,7 +970,7 @@ function UniversalSearchResults({ state }: { state: AppState }) {
 
         <ResultGroup title="Eksamen Navigator" count={results.examQuestions.length}>
           {results.examQuestions.slice(0, 6).map((question) => (
-            <button key={question.id} type="button" className="result-card" onClick={() => selectExamQuestion(question.id)}>
+            <button key={question.id} type="button" className={`result-card${kbClass(ki++)}`} onClick={() => selectExamQuestion(question.id)}>
               <header>
                 <strong><HighlightedText text={`${question.year}: ${question.title}`} query={query} /></strong>
                 <span className="tag">{getPdfSource(question.source.sourceId)?.shortTitle}</span>
@@ -929,6 +998,9 @@ function UniversalSearchResults({ state }: { state: AppState }) {
           ))}
         </ResultGroup>
       </div>
+          </>
+        );
+      })()}
     </section>
   );
 }

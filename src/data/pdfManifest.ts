@@ -123,6 +123,15 @@ export const pdfSources: PdfSource[] = [
     topic: 'Indre energi, arbejde, varme, pV-diagrammer og processer',
   },
   {
+    id: 'lektion-13',
+    kind: 'lecture',
+    title: 'Lektion 13 - Termodynamikkens 2. hovedsætning',
+    shortTitle: 'L13',
+    path: 'pdfs/Lektioner/Lektion_13_compressed.pdf',
+    lecture: 13,
+    topic: 'Reversibilitet, varmekraftmaskiner, Carnot, COP, entropi og nyttevirkning',
+  },
+  {
     id: 'exam-2023',
     kind: 'exam',
     title: 'GMT eksamen juni 2023 - løsninger',

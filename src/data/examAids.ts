@@ -287,6 +287,19 @@ export const pastExamQuestions: PastExamQuestion[] = [
     exampleIds: ['ex-car-acceleration'],
     keywords: ['suvat', 'bil', 'opbremsning', 'acceleration', 'strækning'],
   },
+  {
+    id: 'exam-style-carnot',
+    year: 2025,
+    title: 'Carnot og nyttevirkning',
+    source: { sourceId: 'lektion-13', page: 10, label: 'Eksamens-type: Carnot' },
+    cue: 'Varmekraftmaskine, nyttevirkning, Q_h, Q_c, reservoirtemperaturer eller kraftværk.',
+    firstMove: 'Konverter T til kelvin, beregn η = W/Q_h og sammenlign med η_Carnot = 1 - T_c/T_h.',
+    patternIds: ['pattern-heat-engine'],
+    formulaIds: ['heat-engine-efficiency', 'carnot-efficiency', 'celsius-kelvin'],
+    calculatorIds: ['cop', 'temperature'],
+    exampleIds: ['ex-carnot-engine'],
+    keywords: ['carnot', 'nyttevirkning', 'varmekraftmaskine', 'kelvin', 'effektivitet'],
+  },
 ];
 
 export const stuckCues: StuckCue[] = [
@@ -390,6 +403,16 @@ export const stuckCues: StuckCue[] = [
     calculatorIds: ['energy', 'momentum'],
     keywords: ['før', 'efter', 'stød', 'højde', 'fart', 'fjeder'],
   },
+  {
+    id: 'cue-carnot-efficiency',
+    cue: 'Der nævnes nyttevirkning, Carnot, varmekraftmaskine eller kraftværk.',
+    likelyMeans: 'Varmemaskine med Q_h, Q_c og W.',
+    firstMove: 'Konverter temperaturer til kelvin og brug η = W/Q_h samt η_Carnot = 1 - T_c/T_h.',
+    patternIds: ['pattern-heat-engine'],
+    formulaIds: ['heat-engine-efficiency', 'carnot-efficiency', 'celsius-kelvin'],
+    calculatorIds: ['cop', 'temperature'],
+    keywords: ['carnot', 'nyttevirkning', 'varmekraftmaskine', 'kraftværk', 'effektivitet'],
+  },
 ];
 
 export const supplementalNumericExamples: Record<string, NumericExample> = {
@@ -469,6 +492,15 @@ export const supplementalNumericExamples: Record<string, NumericExample> = {
       { label: 'COP', value: '2,5' },
     ],
     result: { label: 'W', value: '240 kJ elektrisk arbejde' },
+  },
+  'ex-carnot-engine': {
+    description: 'Q_h = 240 J, Q_c = 100 J, T_c = 15 °C (288,15 K).',
+    values: [
+      { label: 'W', value: 'Q_h - Q_c = 140 J' },
+      { label: 'η', value: 'W/Q_h ≈ 58 %' },
+      { label: 'T_h', value: 'fra η_Carnot = 1 - T_c/T_h' },
+    ],
+    result: { label: 'husk', value: 'Konverter °C til K før Carnot-formlen' },
   },
   'ex-relative-wind': {
     description: 'Egenhastighed 50 m/s mod øst og sidevind 10 m/s mod nord.',

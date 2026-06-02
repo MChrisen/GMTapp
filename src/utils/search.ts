@@ -42,6 +42,11 @@ const SYNONYMS: Record<string, string[]> = {
   friktion: ['mu', 'μ', 'skråplan'],
   temperatur: ['kelvin', 'celsius', 'varme'],
   varme: ['kalorimetri', 'temperatur', 'faseovergang'],
+  carnot: ['nyttevirkning', 'varmekraftmaskine', 'η', 'effektivitet', 'kelvin'],
+  nyttevirkning: ['carnot', 'effektivitet', 'varmekraftmaskine', 'η'],
+  entropi: ['uorden', 'irreversibel', '2. hovedsætning', 'termodynamik'],
+  varmekraftmaskine: ['carnot', 'nyttevirkning', 'motore', 'kraftværk'],
+  varmepumpe: ['cop', 'køleskab', 'fryser', 'kølemaskine'],
   massemidtpunkt: ['center', 'mass', 'tyngdepunkt', 'com'],
   drejningsmoment: ['moment', 'torque', 'tau', 'rotation'],
   moment: ['drejningsmoment', 'torque', 'tau', 'statik'],
@@ -207,15 +212,22 @@ export function runSearch(query: string, options: SearchOptions = {}): SearchRes
   const pdfHits: PdfHit[] =
     trimmed && options.includePdfHits
       ? pdfCorpus
-          .flatMap((source) =>
-            source.pages
+          .flatMap((source) => {
+            const meta = getPdfSource(source.sourceId);
+            const sourceHaystack = normalize(
+              [meta?.title, meta?.topic, meta?.shortTitle, source.sourceId.replace('lektion-', 'lektion ')].filter(Boolean).join(' '),
+            );
+            return source.pages
               .map((page) => {
-                const haystack = normalize(`${page.text} ${page.keywords.join(' ')}`);
+                const haystack = normalize(`${sourceHaystack} ${page.text} ${page.keywords.join(' ')}`);
                 if (!matchesAllGroups(haystack, groups)) return null;
-                const score = scoreField(haystack, tokens, 1) + scoreField(normalize(page.keywords.join(' ')), tokens, 2);
+                const score =
+                  scoreField(haystack, tokens, 1) +
+                  scoreField(normalize(page.keywords.join(' ')), tokens, 2) +
+                  scoreField(sourceHaystack, tokens, 4);
                 return {
                   sourceId: source.sourceId,
-                  sourceTitle: getPdfSource(source.sourceId)?.shortTitle ?? source.sourceId,
+                  sourceTitle: meta?.shortTitle ?? source.sourceId,
                   page: page.page,
                   text: cleanSnippet(page.text, 320),
                   score,
@@ -223,8 +235,8 @@ export function runSearch(query: string, options: SearchOptions = {}): SearchRes
               })
               .filter((hit): hit is PdfHit & { score: number } => Boolean(hit))
               .sort((a, b) => b.score - a.score)
-              .slice(0, 3),
-          )
+              .slice(0, 3);
+          })
           .sort((a, b) => b.score - a.score)
           .slice(0, 24)
           .map(({ score: _score, ...hit }) => hit)

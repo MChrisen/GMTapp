@@ -2,7 +2,12 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = resolve(process.cwd());
-const required = ['dist/index.html', 'dist/manifest.webmanifest', 'dist/sw.js'];
+const required = [
+  'dist/index.html',
+  'dist/manifest.webmanifest',
+  'dist/sw.js',
+  'dist/pdfs/Lektioner/Lektion_2_compressed.pdf',
+];
 
 for (const path of required) {
   if (!existsSync(resolve(root, path))) {
