@@ -1,13 +1,7 @@
 import { useEffect } from 'react';
 import type { RefObject } from 'react';
 
-type View =
-  | 'overview'
-  | 'formulas'
-  | 'patterns'
-  | 'calculators'
-  | 'problems'
-  | 'reference';
+type View = 'formulas' | 'problems' | 'reference';
 
 type Params = {
   setView: (view: View) => void;
@@ -34,8 +28,8 @@ export function useGlobalHotkeys({ setView, setQuery, goBack, hasQuery, searchIn
       } else if (event.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
         event.preventDefault();
         searchInput?.focus();
-      } else if (event.altKey && /^[1-6]$/.test(event.key)) {
-        const tabOrder: View[] = ['overview', 'formulas', 'patterns', 'calculators', 'problems', 'reference'];
+      } else if (event.altKey && /^[1-3]$/.test(event.key)) {
+        const tabOrder: View[] = ['formulas', 'problems', 'reference'];
         const idx = Number(event.key) - 1;
         if (tabOrder[idx]) {
           event.preventDefault();

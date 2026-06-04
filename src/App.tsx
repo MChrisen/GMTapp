@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   BookOpen,
-  Calculator as CalculatorIcon,
-  Compass,
   FlaskConical,
   LibraryBig,
   Radar,
@@ -24,6 +22,7 @@ import { exampleById, patternById, problemPatterns, workedExamples } from './dat
 import { formulaById, formulasWithExamples } from './data/formulas';
 import { pdfCorpus } from './data/pdfCorpus';
 import { CONSTANT_CATEGORIES, PHYSICAL_CONSTANTS, SUBSTANCE_PROPERTIES } from './data/constants';
+import type { PhysicalConstant } from './data/constants';
 import { getPdfSource, pdfHref, pdfSources, resolvePdfOpenTarget } from './data/pdfManifest';
 import type {
   CalculatorDefinition,
@@ -39,14 +38,16 @@ import {
   getFormulaFinderIndex,
 } from './utils/formulaFinder';
 import { sourceLabel, sourceUrl } from './utils/linkResolver';
+import { buildMapleSnippet } from './utils/maple';
+import { findProblemMatches, getExampleGivenKeys, getExamGivenKeys } from './utils/problemFinder';
 import type { SearchResults } from './utils/search';
 import { useBookmarks, useLocalStorage, useRecent } from './utils/storage';
 import './styles.css';
 
-type View = 'overview' | 'formulas' | 'patterns' | 'calculators' | 'problems' | 'reference';
+type View = 'formulas' | 'problems' | 'reference';
 
-type FormulasMode = 'cards' | 'finder' | 'advancedFinder' | 'sheet';
-type ProblemsMode = 'examples' | 'exam';
+type FormulasMode = 'cards' | 'finder' | 'advancedFinder' | 'calculators' | 'sheet';
+type ProblemsMode = 'patterns' | 'examples' | 'exam';
 type ReferenceMode = 'tools' | 'sources';
 
 const FORMULAS_MODE_STORAGE_KEY = 'gmt:formulas-mode';
@@ -59,7 +60,7 @@ function readStoredFormulasMode(): FormulasMode {
     const raw = sessionStorage.getItem(FORMULAS_MODE_STORAGE_KEY);
     if (!raw) return 'cards';
     const v = JSON.parse(raw) as unknown;
-    if (v === 'cards' || v === 'finder' || v === 'advancedFinder' || v === 'sheet') return v;
+    if (v === 'cards' || v === 'finder' || v === 'advancedFinder' || v === 'calculators' || v === 'sheet') return v;
   } catch {
     /* ignore */
   }
@@ -67,14 +68,14 @@ function readStoredFormulasMode(): FormulasMode {
 }
 
 function readStoredProblemsMode(): ProblemsMode {
-  if (typeof window === 'undefined') return 'examples';
+  if (typeof window === 'undefined') return 'patterns';
   try {
     const raw = sessionStorage.getItem(PROBLEMS_MODE_STORAGE_KEY);
-    if (raw === 'examples' || raw === 'exam') return raw;
+    if (raw === 'patterns' || raw === 'examples' || raw === 'exam') return raw;
   } catch {
     /* ignore */
   }
-  return 'examples';
+  return 'patterns';
 }
 
 function readStoredReferenceMode(): ReferenceMode {
@@ -91,46 +92,40 @@ function readStoredReferenceMode(): ReferenceMode {
 const categories = Array.from(new Set(formulasWithExamples.map((formula) => formula.category)));
 
 const NAV_ITEMS: Array<{ id: View; label: string; description: string; icon: LucideIcon }> = [
-  { id: 'overview', label: 'Start', description: 'Overblik og genveje', icon: Compass },
-  { id: 'formulas', label: 'Formler', description: 'Bibliotek · finder · kæder', icon: BookOpen },
-  { id: 'patterns', label: 'Guider', description: 'Metode for hver opgavetype', icon: Route },
-  { id: 'calculators', label: 'Beregnere', description: 'Indsæt tal med enheder', icon: CalculatorIcon },
-  { id: 'problems', label: 'Opgaver', description: 'Eksempler og eksamen', icon: FlaskConical },
-  { id: 'reference', label: 'Reference', description: 'Konstanter og PDF', icon: LibraryBig },
+  { id: 'formulas', label: 'Formler', description: 'Alle formler, finder og beregnere', icon: BookOpen },
+  { id: 'problems', label: 'Problemer', description: 'Problemtyper, eksempler, eksamen', icon: FlaskConical },
+  { id: 'reference', label: 'Konstanter', description: 'Konstanter, enheder og PDF', icon: LibraryBig },
 ];
+const VIEW_IDS: View[] = ['formulas', 'problems', 'reference'];
 
 const VIEW_TITLES: Record<View, string> = {
-  overview: 'Start',
   formulas: 'Formler',
-  patterns: 'Guider',
-  calculators: 'Beregnere',
-  problems: 'Opgaver',
-  reference: 'Reference',
+  problems: 'Problemer',
+  reference: 'Konstanter',
 };
 
 const VIEW_LEADS: Record<View, string> = {
-  overview: 'Vælg et spor – eller søg med stikord øverst.',
-  formulas: 'Slå formler op, find dem ud fra variable, eller print hurtigark.',
-  patterns: 'Vælg opgavetype → følg metoden → hop til formler og eksempler.',
-  calculators: 'Indsæt tal i de rigtige enheder.',
-  problems: 'Gennemarbejd eksempler eller eksamensopgaver.',
-  reference: 'Konstanter, enheder og lokale PDF-lektioner.',
+  formulas: 'Komplet formelbibliotek med links til guider, PDF og Maple-kopi.',
+  problems: 'Alle problemtyper kategoriseret med hurtig guide og detaljerede eksempler.',
+  reference: 'Eksamensrelevante konstanter, enheder og PDF-kilder samlet ét sted.',
 };
 
 const FORMULAS_TAB_LABELS: Record<FormulasMode, string> = {
   cards: 'Bibliotek',
   finder: 'Formelfinder',
   advancedFinder: 'Kædefinder',
+  calculators: 'Beregnere',
   sheet: 'Hurtigark',
 };
 
 const PROBLEMS_TAB_LABELS: Record<ProblemsMode, string> = {
+  patterns: 'Problemtyper',
   examples: 'Eksempler',
-  exam: 'Eksamen',
+  exam: 'Eksamen Navigator',
 };
 
 const REFERENCE_TAB_LABELS: Record<ReferenceMode, string> = {
-  tools: 'Værktøj',
+  tools: 'Konstanter',
   sources: 'PDF-kilder',
 };
 
@@ -144,9 +139,9 @@ function viewSectionLabel(
     case 'formulas':
       return `Formler · ${FORMULAS_TAB_LABELS[formulasMode]}`;
     case 'problems':
-      return `Opgaver · ${PROBLEMS_TAB_LABELS[problemsMode]}`;
+      return `Problemer · ${PROBLEMS_TAB_LABELS[problemsMode]}`;
     case 'reference':
-      return `Reference · ${REFERENCE_TAB_LABELS[referenceMode]}`;
+      return `Konstanter · ${REFERENCE_TAB_LABELS[referenceMode]}`;
     default:
       return null;
   }
@@ -276,6 +271,65 @@ const getPatternCategory = (pattern: ProblemPattern): 'Mekanik' | 'Termodynamik'
   return thermoIds.has(pattern.id) ? 'Termodynamik' : 'Mekanik';
 };
 
+const FORMULA_CONSTANT_HINTS: Record<string, string[]> = {
+  'universal-gravitation': ['G', 'M_J', 'R_J'],
+  'orbital-speed': ['G', 'M_J', 'R_J'],
+  'orbital-period': ['G', 'M_J', 'R_J'],
+  'heat-capacity': ['c_vand'],
+  'latent-heat': ['L_f is', 'L_v vand'],
+  'ideal-gas-law': ['R'],
+  'ideal-gas-density': ['R_air'],
+  'stefan-boltzmann': ['σ'],
+};
+
+const MAPLE_CONSTANT_ASSIGNMENTS: Record<string, string> = {
+  g: 'g := 9.82;',
+  G: 'G := 6.674e-11;',
+  R: 'R := 8.314;',
+  R_air: 'R_air := 287;',
+  k_B: 'k_B := 1.381e-23;',
+  N_A: 'N_A := 6.022e23;',
+  σ: 'sigma := 5.670e-8;',
+  c_vand: 'c := 4186;',
+  'L_f is': 'L_f := 3.33e5;',
+  'L_v vand': 'L_v := 2.26e6;',
+  M_J: 'M := 5.97e24;',
+  R_J: 'R_J := 6.37e6;',
+  '0 °C': 'T0 := 273.15;',
+};
+
+function mapleCopyTextForFormula(formula: Formula, includeConstants: boolean): string {
+  const constantAssignments = includeConstants
+    ? constantsForFormula(formula)
+        .map((constant) => MAPLE_CONSTANT_ASSIGNMENTS[constant.symbol])
+        .filter((line): line is string => Boolean(line))
+    : [];
+  const snippet = buildMapleSnippet(formula.latex, constantAssignments);
+  if (snippet.trim()) return snippet;
+  const fallback = formula.equation.trim();
+  return fallback ? `eq1 := ${fallback}:` : '';
+}
+
+function constantsForFormula(formula: Formula): PhysicalConstant[] {
+  const hits = new Set<string>();
+  const names = formula.variables.map((variable) => variable.name.toLocaleLowerCase('da-DK'));
+  if (names.some((name) => name.includes('tyngdeacceleration'))) hits.add('g');
+  if (names.some((name) => name.includes('gravitationskonstant'))) hits.add('G');
+  if (names.some((name) => name.includes('gaskonstant'))) hits.add('R');
+  if (names.some((name) => name.includes('boltzmann'))) hits.add('k_B');
+  if (names.some((name) => name.includes('avogadro'))) hits.add('N_A');
+  if (names.some((name) => name.includes('stefan'))) hits.add('σ');
+  if (names.some((name) => name.includes('varmekapacitet'))) hits.add('c_vand');
+  if (names.some((name) => name.includes('smeltevarme'))) hits.add('L_f is');
+  if (names.some((name) => name.includes('fordampningsvarme'))) hits.add('L_v vand');
+
+  for (const symbol of FORMULA_CONSTANT_HINTS[formula.id] ?? []) {
+    hits.add(symbol);
+  }
+
+  return PHYSICAL_CONSTANTS.filter((constant) => hits.has(constant.symbol));
+}
+
 const formatNumber = (value: number) => {
   if (!Number.isFinite(value)) return 'ikke defineret';
   const absolute = Math.abs(value);
@@ -348,7 +402,7 @@ type AppState = {
 };
 
 function App() {
-  const [view, setViewRaw] = useState<View>('overview');
+  const [view, setViewRaw] = useState<View>('formulas');
   const [query, setQuery] = useState('');
   const [includePdfInSearch, setIncludePdfInSearch] = useLocalStorage<boolean>('gmt:include-pdf-search', false);
   const [selectedFormulaId, setSelectedFormulaId] = useState(formulasWithExamples[0]?.id ?? '');
@@ -369,9 +423,9 @@ function App() {
   const navHistoryRef = useRef<NavSnapshot[]>([]);
   const restoredSessionRef = useRef(false);
   const skipNextPersistRef = useRef(false);
-  const { bookmarks, toggle: toggleBookmark, isBookmarked } = useBookmarks();
-  const { recent: recentFormulas, push: pushRecentFormula } = useRecent('gmt:recent-formulas', 6);
-  const { recent: recentExamples, push: pushRecentExample } = useRecent('gmt:recent-examples', 4);
+  const { toggle: toggleBookmark, isBookmarked } = useBookmarks();
+  const { push: pushRecentFormula } = useRecent('gmt:recent-formulas', 6);
+  const { push: pushRecentExample } = useRecent('gmt:recent-examples', 4);
 
   const snapshot = useCallback(
     (): NavSnapshot => ({
@@ -391,7 +445,7 @@ function App() {
   }, [snapshot]);
 
   const restoreSnapshot = useCallback((entry: NavSnapshot) => {
-    setViewRaw(entry.view);
+    setViewRaw(VIEW_IDS.includes(entry.view) ? entry.view : 'formulas');
     setSelectedFormulaId(entry.selectedFormulaId);
     setSelectedExampleId(entry.selectedExampleId);
     setSelectedCalculatorId(entry.selectedCalculatorId);
@@ -442,13 +496,15 @@ function App() {
   const selectCalculator = useCallback((id: string) => {
     pushHistory();
     setSelectedCalculatorId(id);
-    setViewRaw('calculators');
+    setViewRaw('formulas');
+    setFormulasMode('calculators');
     setIsSearchOpen(false);
   }, [pushHistory]);
   const selectPattern = useCallback((id: string) => {
     pushHistory();
     setSelectedPatternId(id);
-    setViewRaw('patterns');
+    setViewRaw('problems');
+    setProblemsMode('patterns');
     setIsSearchOpen(false);
   }, [pushHistory]);
   const selectExamQuestion = useCallback((id: string) => {
@@ -730,23 +786,12 @@ function App() {
           </div>
 
           <main className="view-stage" id="view-stage" tabIndex={-1}>
-            {view !== 'overview' && (
-              <ViewHeader
-                view={view}
-                formulasMode={formulasMode}
-                problemsMode={problemsMode}
-                referenceMode={referenceMode}
-              />
-            )}
-            {view === 'overview' && (
-              <Overview
-                state={state}
-                bookmarks={bookmarks}
-                isBookmarked={isBookmarked}
-                recentFormulas={recentFormulas}
-                recentExamples={recentExamples}
-              />
-            )}
+            <ViewHeader
+              view={view}
+              formulasMode={formulasMode}
+              problemsMode={problemsMode}
+              referenceMode={referenceMode}
+            />
             {view === 'formulas' && (
               <>
                 <div className="sub-tab-row">
@@ -782,6 +827,15 @@ function App() {
                     <button
                       type="button"
                       role="tab"
+                      aria-selected={formulasMode === 'calculators'}
+                      className={formulasMode === 'calculators' ? 'active' : ''}
+                      onClick={() => setFormulasMode('calculators')}
+                    >
+                      Beregnere
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
                       aria-selected={formulasMode === 'sheet'}
                       className={formulasMode === 'sheet' ? 'active' : ''}
                       onClick={() => setFormulasMode('sheet')}
@@ -801,17 +855,26 @@ function App() {
                   <FormulaFinder state={state} />
                 ) : formulasMode === 'advancedFinder' ? (
                   <AdvancedFormulaFinder state={state} />
+                ) : formulasMode === 'calculators' ? (
+                  <CalculatorHub state={state} selectedCalculator={selectedCalculator} />
                 ) : (
                   <FormulaSheetView state={state} />
                 )}
               </>
             )}
-            {view === 'patterns' && <ProblemPatterns state={state} selectedPattern={selectedPattern} />}
-            {view === 'calculators' && <CalculatorHub state={state} selectedCalculator={selectedCalculator} />}
             {view === 'problems' && (
               <>
                 <div className="sub-tab-row">
                   <div className="sub-tabs" role="tablist" aria-label="Opgaver-visning">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={problemsMode === 'patterns'}
+                      className={problemsMode === 'patterns' ? 'active' : ''}
+                      onClick={() => setProblemsMode('patterns')}
+                    >
+                      Problemtyper
+                    </button>
                     <button
                       type="button"
                       role="tab"
@@ -832,7 +895,9 @@ function App() {
                     </button>
                   </div>
                 </div>
-                {problemsMode === 'examples' ? (
+                {problemsMode === 'patterns' ? (
+                  <ProblemPatterns state={state} selectedPattern={selectedPattern} />
+                ) : problemsMode === 'examples' ? (
                   <ExamplesView
                     state={state}
                     selectedExample={selectedExample}
@@ -855,7 +920,7 @@ function App() {
                       className={referenceMode === 'tools' ? 'active' : ''}
                       onClick={() => setReferenceMode('tools')}
                     >
-                      Værktøj
+                      Konstanter og enheder
                     </button>
                     <button
                       type="button"
@@ -874,7 +939,7 @@ function App() {
           </main>
 
           <footer className="hint-bar">
-            <kbd>⌘K</kbd> / <kbd>/</kbd> søg · <kbd>Esc</kbd> ryd · <kbd>Alt+1…6</kbd> skift fane · <kbd>Alt+←</kbd> tilbage · Alt kører offline
+            <kbd>⌘K</kbd> / <kbd>/</kbd> søg · <kbd>Esc</kbd> ryd · <kbd>Alt+1…3</kbd> skift hovedside · <kbd>Alt+←</kbd> tilbage · Alt kører offline
           </footer>
         </section>
       </div>
@@ -1498,7 +1563,14 @@ function Overview({
             <strong>Søg på tværs</strong>
             <span>Formler, guider, beregnere og PDF</span>
           </button>
-          <button type="button" className="action-card" onClick={() => state.setView('patterns')}>
+          <button
+            type="button"
+            className="action-card"
+            onClick={() => {
+              state.setProblemsMode('patterns');
+              state.setView('problems');
+            }}
+          >
             <Route size={18} aria-hidden="true" />
             <strong>Find problemtype</strong>
             <span>Genkend opgaven og følg metoden</span>
@@ -1547,7 +1619,7 @@ function Overview({
           <ul className="shortcut-list">
             <li><kbd>⌘K</kbd> / <kbd>/</kbd> — søg</li>
             <li><kbd>Esc</kbd> — ryd søgning</li>
-            <li><kbd>Alt+1…6</kbd> — skift hovedfane</li>
+            <li><kbd>Alt+1…3</kbd> — skift hovedside</li>
             <li><kbd>Alt+←</kbd> — tilbage</li>
           </ul>
         </details>
@@ -1620,14 +1692,51 @@ function FormulaFinder({ state }: { state: AppState }) {
   const { pickerEntries, sortedVariables, variableMeta } = useMemo(() => getFormulaFinderIndex(), []);
   const [givenKeys, setGivenKeys] = useState(() => new Set<string>());
   const [outputKey, setOutputKey] = useState('');
+  const [strictProblemMatch, setStrictProblemMatch] = useState(true);
+  const [problemScope, setProblemScope] = useState<'all' | 'exam' | 'example' | 'pdf'>('all');
+
+  const selectedGivenKeys = [...givenKeys];
 
   const results = useMemo(
     () =>
       findFormulas({
-        givenKeys: [...givenKeys],
+        givenKeys: selectedGivenKeys,
         outputKey: outputKey || null,
       }),
-    [givenKeys, outputKey],
+    [selectedGivenKeys, outputKey],
+  );
+
+  const problemMatches = useMemo(
+    () =>
+      findProblemMatches({
+        givenKeys: selectedGivenKeys,
+        strictExact: strictProblemMatch,
+        maxResults: 120,
+      }),
+    [selectedGivenKeys, strictProblemMatch],
+  );
+
+  const nearestProblemMatches = useMemo(() => {
+    if (!strictProblemMatch || selectedGivenKeys.length === 0 || problemMatches.length > 0) return [];
+    const relaxed = findProblemMatches({
+      givenKeys: selectedGivenKeys,
+      strictExact: false,
+      maxResults: 24,
+    });
+    const exactSet = new Set(problemMatches.map((entry) => `${entry.kind}:${entry.id}`));
+    return relaxed.filter((entry) => !exactSet.has(`${entry.kind}:${entry.id}`)).slice(0, 10);
+  }, [strictProblemMatch, selectedGivenKeys, problemMatches]);
+
+  const visibleProblemMatches = useMemo(
+    () => (problemScope === 'all' ? problemMatches : problemMatches.filter((entry) => entry.kind === problemScope)),
+    [problemMatches, problemScope],
+  );
+  const visibleNearestProblemMatches = useMemo(
+    () =>
+      problemScope === 'all'
+        ? nearestProblemMatches
+        : nearestProblemMatches.filter((entry) => entry.kind === problemScope),
+    [nearestProblemMatches, problemScope],
   );
 
   const grouped = useMemo(() => {
@@ -1650,25 +1759,27 @@ function FormulaFinder({ state }: { state: AppState }) {
   };
 
   const labelFor = (key: string) => pickerEntryLabel(pickerEntries, key) || variableMeta.get(key)?.labelLaTeX || key;
-
   const needsSelection = givenKeys.size === 0 && !outputKey;
+  const topFormula = results[0]?.formula;
+  const topProblem = visibleProblemMatches[0] ?? visibleNearestProblemMatches[0];
+  const hasGivenSelection = givenKeys.size > 0;
 
   return (
     <div className="formula-finder">
       <section className="card formula-finder-controls">
         <header className="formula-finder-head">
           <div>
-            <p className="eyebrow">Formelfinder</p>
-            <h2>Find formler ud fra variable</h2>
+            <p className="eyebrow">Formel + Opgavefinder</p>
+            <h2>Find både formler og opgaver ud fra variable</h2>
             <p className="muted small">
-              Vælg størrelser via søgning eller listen. Samme symbol (fx T) kan betyde temperatur eller periode — vælg den rigtige i menuen.
+              Vælg størrelserne fra opgaven. Du får både formler og opgaver med samme begyndelsesvariable.
             </p>
           </div>
         </header>
 
         <VariablePicker
           label="Variable i opgaven"
-          hint="Vælg alle størrelser du kender eller skal bruge."
+          hint="Vælg alle størrelser du får oplyst. Vælger du fx m, matcher den også m₁/m₂/M (men ikke omvendt)."
           entries={pickerEntries}
           chipVariables={sortedVariables}
           selectedKeys={givenKeys}
@@ -1676,22 +1787,59 @@ function FormulaFinder({ state }: { state: AppState }) {
           entryLabel={labelFor}
         />
 
-        <label className="finder-output">
-          <span className="muted small">Ønsket output (valgfrit)</span>
-          <select value={outputKey} onChange={(event) => setOutputKey(event.target.value)}>
-            <option value="">— Ingen særlig outputvariabel —</option>
-            {pickerEntries.map((entry) => (
-              <option key={entry.id} value={entry.canonicalKey}>
-                {entry.disambiguation ? `${entry.nameHint} (${entry.disambiguation})` : entry.nameHint}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="finder-control-grid">
+          <label className="finder-output">
+            <span className="muted small">Ønsket output (valgfrit)</span>
+            <select value={outputKey} onChange={(event) => setOutputKey(event.target.value)}>
+              <option value="">— Ingen særlig outputvariabel —</option>
+              {pickerEntries.map((entry) => (
+                <option key={entry.id} value={entry.canonicalKey}>
+                  {entry.disambiguation ? `${entry.nameHint} (${entry.disambiguation})` : entry.nameHint}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="finder-strict-toggle">
+            <input
+              type="checkbox"
+              checked={strictProblemMatch}
+              onChange={(event) => setStrictProblemMatch(event.target.checked)}
+            />
+            Kræv præcis samme begyndelsesvariable i opgavematch
+          </label>
+        </div>
       </section>
+
+      {hasGivenSelection && (topFormula || topProblem) && (
+        <section className="card finder-assistant">
+          <h3>Næste bedste skridt</h3>
+          <div className="pill-row">
+            {topFormula && (
+              <button type="button" onClick={() => state.selectFormula(topFormula.id)}>
+                Start med formel: {topFormula.name}
+              </button>
+            )}
+            {topProblem &&
+              (topProblem.kind === 'exam' ? (
+                <button type="button" onClick={() => state.selectExamQuestion(topProblem.id)}>
+                  Se lignende eksamensopgave: {topProblem.year}
+                </button>
+              ) : topProblem.kind === 'example' ? (
+                <button type="button" onClick={() => state.selectExample(topProblem.id)}>
+                  Se lignende løst eksempel
+                </button>
+              ) : (
+                <button type="button" onClick={() => state.openPdf(topProblem.sourceId, topProblem.page)}>
+                  Se lignende PDF-opgave
+                </button>
+              ))}
+          </div>
+        </section>
+      )}
 
       <section className="finder-results-wrap card">
         <header className="finder-results-head">
-          <h3>Resultater</h3>
+          <h3>Formelresultater</h3>
           <span className="muted small">
             {needsSelection
               ? 'Vælg mindst én variabel eller en ønsket output.'
@@ -1709,7 +1857,7 @@ function FormulaFinder({ state }: { state: AppState }) {
               <h4 className="category-heading finder-result-group-title">{category}</h4>
               <div className="finder-result-group-cards">
                 {rows.map(({ formula, canonicalKeysInFormula }) => {
-                  const givenMatched = [...givenKeys].filter((k) => canonicalKeysInFormula.includes(k));
+                  const givenMatched = selectedGivenKeys.filter((k) => canonicalKeysInFormula.includes(k));
                   const outOk = outputKey && canonicalKeysInFormula.includes(outputKey);
                   return (
                     <article key={formula.id} className="finder-result-card">
@@ -1750,6 +1898,166 @@ function FormulaFinder({ state }: { state: AppState }) {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="finder-results-wrap card problem-finder-results">
+        <header className="finder-results-head">
+          <h3>Opgaver med samme variable</h3>
+          <span className="muted small">
+            {!hasGivenSelection
+              ? 'Vælg mindst én variabel.'
+              : `${visibleProblemMatches.length} opgave${visibleProblemMatches.length === 1 ? '' : 'r'}`}
+          </span>
+        </header>
+
+        <div className="mini-filter finder-scope-filter">
+          {(
+            [
+              { id: 'all', label: `Alle (${problemMatches.length})` },
+              { id: 'exam', label: `Eksamen (${problemMatches.filter((entry) => entry.kind === 'exam').length})` },
+              { id: 'example', label: `Eksempler (${problemMatches.filter((entry) => entry.kind === 'example').length})` },
+              { id: 'pdf', label: `PDF (${problemMatches.filter((entry) => entry.kind === 'pdf').length})` },
+            ] as const
+          ).map((scope) => (
+            <button
+              key={scope.id}
+              type="button"
+              className={problemScope === scope.id ? 'active' : undefined}
+              onClick={() => setProblemScope(scope.id)}
+            >
+              {scope.label}
+            </button>
+          ))}
+        </div>
+
+        {hasGivenSelection && visibleProblemMatches.length === 0 && (
+          <p className="muted finder-empty">
+            Ingen opgaver matcher {strictProblemMatch ? 'præcist' : 'alle'} valgte variable.
+          </p>
+        )}
+
+        <div className="problem-match-grid">
+          {visibleProblemMatches.map((match) => {
+            const sourceLabelText =
+              match.kind === 'exam'
+                ? `${match.year} · Eksamen`
+                : match.kind === 'example'
+                  ? `Eksempel · ${exampleById(match.id)?.pattern ?? match.pattern}`
+                  : `PDF-opgave · ${match.sourceTitle}`;
+            const cueText =
+              match.kind === 'exam'
+                ? pastExamQuestions.find((q) => q.id === match.id)?.cue
+                : match.kind === 'example'
+                  ? exampleById(match.id)?.question
+                  : match.snippet;
+            return (
+              <article key={`${match.kind}-${match.id}`} className="problem-match-card">
+                <header>
+                  <strong>{match.title}</strong>
+                  <span className="tag">{sourceLabelText}</span>
+                </header>
+                {cueText ? <p className="muted small">{cleanSnippet(cueText, 170)}</p> : null}
+                <div className="match-badges">
+                  <span className="badge badge-out ok">Match: {match.similarityPercent}%</span>
+                  <span className="badge">Dækning: {match.coveragePercent}%</span>
+                  <span className="badge">Præcision: {match.precisionPercent}%</span>
+                  <span className="badge badge-given">
+                    Variable:{' '}
+                    {match.givenKeys.map((key, index) => (
+                      <span key={`${match.id}-${key}`} className="badge-math">
+                        {index > 0 ? <span className="badge-sep"> </span> : null}
+                        <TexMath tex={labelFor(key)} />
+                      </span>
+                    ))}
+                  </span>
+                </div>
+                {match.selectedCoverageHits.some((entry) => entry.usedHierarchy) && (
+                  <div className="problem-match-why">
+                    {match.selectedCoverageHits
+                      .filter((entry) => entry.usedHierarchy)
+                      .map((entry) => (
+                        <span key={`why-${match.id}-${entry.selectedKey}`} className="badge hierarchy-badge">
+                          <TexMath tex={labelFor(entry.selectedKey)} />
+                          <span>→</span>
+                          {entry.matchedTaskKeys
+                            .filter((key) => key !== entry.selectedKey)
+                            .map((key, index) => (
+                              <span key={`why-${match.id}-${entry.selectedKey}-${key}`} className="badge-math">
+                                {index > 0 ? <span className="badge-sep"> </span> : null}
+                                <TexMath tex={labelFor(key)} />
+                              </span>
+                            ))}
+                        </span>
+                      ))}
+                  </div>
+                )}
+                <div className="pill-row">
+                  {match.kind === 'exam' ? (
+                    <button type="button" onClick={() => state.selectExamQuestion(match.id)}>
+                      Åbn i Eksamen Navigator
+                    </button>
+                  ) : match.kind === 'example' ? (
+                    <button type="button" onClick={() => state.selectExample(match.id)}>
+                      Åbn løst eksempel
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => state.openPdf(match.sourceId, match.page)}>
+                      Åbn PDF-side
+                    </button>
+                  )}
+                  {match.formulaIds[0] && (
+                    <button type="button" onClick={() => state.selectFormula(match.formulaIds[0]!)}>
+                      Åbn primær formel
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        {strictProblemMatch && visibleProblemMatches.length === 0 && visibleNearestProblemMatches.length > 0 && (
+          <section className="near-match-block">
+            <h4>Nærmeste lignende opgaver</h4>
+            <p className="muted small">
+              Disse er tæt på, men har ekstra variable i forhold til dit præcise valg.
+            </p>
+            <div className="problem-match-grid">
+              {visibleNearestProblemMatches.map((match) => (
+                <article key={`near-${match.kind}-${match.id}`} className="problem-match-card near">
+                  <header>
+                    <strong>{match.title}</strong>
+                    <span className="tag">{match.kind === 'exam' ? `${match.year} · Eksamen` : match.kind === 'example' ? 'Eksempel' : 'PDF-opgave'}</span>
+                  </header>
+                  <div className="match-badges">
+                    <span className="badge badge-out">Match: {match.similarityPercent}%</span>
+                    <span className="badge">Ekstra variable: {match.extraTaskKeys.length}</span>
+                    {match.extraTaskKeys.slice(0, 4).map((key) => (
+                      <span key={`near-extra-${match.id}-${key}`} className="badge badge-math">
+                        <TexMath tex={labelFor(key)} />
+                      </span>
+                    ))}
+                  </div>
+                  <div className="pill-row">
+                    {match.kind === 'exam' ? (
+                      <button type="button" onClick={() => state.selectExamQuestion(match.id)}>
+                        Åbn i Eksamen Navigator
+                      </button>
+                    ) : match.kind === 'example' ? (
+                      <button type="button" onClick={() => state.selectExample(match.id)}>
+                        Åbn løst eksempel
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => state.openPdf(match.sourceId, match.page)}>
+                        Åbn PDF-side
+                      </button>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
       </section>
     </div>
   );
@@ -2045,13 +2353,40 @@ function FormulaDetail({
     .map((id) => exampleById(id))
     .filter((entry): entry is WorkedExample => Boolean(entry));
   const linkedExamQuestions = pastExamQuestions.filter((question) => question.formulaIds.includes(formula.id));
+  const linkedPatterns = problemPatterns.filter((pattern) => pattern.formulaIds.includes(formula.id));
+  const relevantConstants = constantsForFormula(formula);
+  const [mapleCopyStatus, setMapleCopyStatus] = useState<null | 'plain' | 'constants'>(null);
+
+  const copyMaple = useCallback(
+    async (includeConstants: boolean) => {
+      const text = mapleCopyTextForFormula(formula, includeConstants);
+      try {
+        await navigator.clipboard?.writeText(text);
+        setMapleCopyStatus(includeConstants ? 'constants' : 'plain');
+        window.setTimeout(() => setMapleCopyStatus(null), 1600);
+      } catch {
+        setMapleCopyStatus(null);
+      }
+    },
+    [formula],
+  );
+
+  const conditions = [...formula.assumptions, ...formula.notes];
+  const hasConnections =
+    relatedFormulas.length > 0 ||
+    linkedPatterns.length > 0 ||
+    relatedExamples.length > 0 ||
+    formula.sources.length > 0 ||
+    linkedExamQuestions.length > 0;
 
   return (
-    <section className="card detail">
+    <section className="card detail formula-detail">
       <header className="detail-head">
-        <div>
-          <span className="category-pill">{formula.category}</span>
-          <p className="detail-topic muted">{formula.topic}</p>
+        <div className="detail-heading">
+          <p className="detail-eyebrow">
+            <span className="category-pill">{formula.category}</span>
+            <span className="detail-topic">{formula.topic}</span>
+          </p>
           <h2>{formula.name}</h2>
         </div>
         <button
@@ -2064,124 +2399,170 @@ function FormulaDetail({
         </button>
       </header>
 
-      <div className="equation-card">
-        <TexMath tex={formula.latex} block />
+      <div className="equation-hero">
+        <div className="equation-card">
+          <TexMath tex={formula.latex} block />
+        </div>
+        <div className="equation-actions">
+          <button type="button" onClick={() => copyMaple(false)}>
+            Kopiér til Maple
+          </button>
+          <button type="button" className="ghost" onClick={() => copyMaple(true)}>
+            Maple + konstanter
+          </button>
+          <span className="equation-copy-feedback" role="status">
+            {mapleCopyStatus === 'plain'
+              ? '✓ Ligning kopieret'
+              : mapleCopyStatus === 'constants'
+                ? '✓ Ligning + konstanter kopieret'
+                : ''}
+          </span>
+        </div>
       </div>
 
-      <section className="subcard formula-info">
-        <h3>Hvad fortæller formlen?</h3>
-        <p>{formula.description}</p>
-        <p><strong>Brug den når:</strong> {formula.useWhen}</p>
-        <p><strong>Eksamens-tip:</strong> {formula.examTip}</p>
-        <div className="coverage-badges">
-          <span>{relatedExamples.length ? 'Eksempel koblet' : 'Mangler direkte eksempel'}</span>
-          <span>{calculator ? 'Beregner koblet' : 'Ingen direkte beregner'}</span>
-          <span>{formula.sources.length ? 'PDF-kilde' : 'Ingen PDF-kilde'}</span>
-          <span>{linkedExamQuestions.length ? 'Findes i Eksamen Navigator' : 'Ikke i Eksamen Navigator'}</span>
-        </div>
-      </section>
-
-      <section className="subcard">
-        <h3>Næste bedste handling</h3>
-        <div className="pill-row">
-          {calculator && (
-            <button type="button" onClick={() => state.selectCalculator(calculator.id)}>
-              Åbn beregner
-            </button>
-          )}
-          {relatedExamples[0] && (
-            <button type="button" onClick={() => state.selectExample(relatedExamples[0].id)}>
-              Se nærmeste eksempel
-            </button>
-          )}
-          {formula.sources[0] && (
-            <a href={sourceUrl(formula.sources[0])} target="_blank" rel="noreferrer">
-              Åbn primær PDF-kilde
-            </a>
-          )}
-        </div>
-      </section>
-
-      <div className="grid auto-fit">
+      <div className="formula-facts">
         <section className="subcard">
-          <h3>Variable</h3>
-          <div className="variable-grid">
+          <h3>Variabler</h3>
+          <dl className="variable-legend">
             {formula.variables.map((variable) => (
-              <div key={`${formula.id}-${variable.symbol}`}>
-                <strong>{variable.latex ? <TexMath tex={variable.latex} /> : variable.symbol}</strong>
-                <span>{variable.name}</span>
-                {variable.unit && <small>{variable.unit}</small>}
+              <div key={`${formula.id}-${variable.symbol}`} className="variable-legend-row">
+                <dt>{variable.latex ? <TexMath tex={variable.latex} /> : variable.symbol}</dt>
+                <dd>
+                  <span>{variable.name}</span>
+                  {variable.unit && <small>{variable.unit}</small>}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        <section className="subcard">
+          <h3>Sådan bruges den</h3>
+          <p className="use-when">{formula.useWhen}</p>
+          {conditions.length > 0 && (
+            <>
+              <h4>Forudsætninger</h4>
+              <ul className="condition-list">
+                {conditions.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      </div>
+
+      {relevantConstants.length > 0 && (
+        <section className="subcard constants-subcard">
+          <div className="subcard-head">
+            <h3>Konstanter til denne formel</h3>
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                state.setReferenceMode('tools');
+                state.setView('reference');
+              }}
+            >
+              Alle konstanter →
+            </button>
+          </div>
+          <div className="constant-grid formula-constant-grid">
+            {relevantConstants.map((entry) => (
+              <div key={`${formula.id}-${entry.symbol}`} className="constant">
+                <strong><TexMath tex={entry.latex} /></strong>
+                <span>{entry.value}</span>
+                <small>{entry.note}</small>
               </div>
             ))}
           </div>
         </section>
-
-        <section className="subcard">
-          <h3>Antagelser og fejl at undgå</h3>
-          <ul>
-            {[...formula.assumptions, ...formula.notes].map((note) => (
-              <li key={note}>{note}</li>
-            ))}
-          </ul>
-        </section>
-      </div>
+      )}
 
       {calculator && (
         <section className="subcard">
-          <h3>Regner</h3>
+          <h3>Beregn direkte</h3>
           <Calculator calculator={calculator} state={state} embedded />
         </section>
       )}
 
-      {relatedExamples.length > 0 && (
-        <section className="subcard">
-          <h3>Eksempler der bruger formlen</h3>
-          <div className="example-list">
-            {relatedExamples.map((example) => (
-              <button
-                key={example.id}
-                type="button"
-                className="example-card"
-                onClick={() => state.selectExample(example.id)}
-              >
-                <Figure id={example.figureId} />
-                <div>
-                  <strong>{example.title}</strong>
-                  <small>{example.pattern}</small>
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
+      {hasConnections && (
+        <section className="subcard connections">
+          <h3>Forbundet</h3>
 
-      {relatedFormulas.length > 0 && (
-        <section className="subcard">
-          <h3>Relaterede formler</h3>
-          <div className="pill-row">
-            {relatedFormulas.map((related) => (
-              <button key={related.id} type="button" onClick={() => state.selectFormula(related.id)}>
-                {related.name}
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
+          {relatedFormulas.length > 0 && (
+            <div className="connection-block">
+              <h4>Relaterede formler</h4>
+              <div className="related-formula-grid">
+                {relatedFormulas.map((related) => (
+                  <button
+                    key={related.id}
+                    type="button"
+                    className="related-formula-card"
+                    onClick={() => state.selectFormula(related.id)}
+                  >
+                    <span className="related-formula-name">{related.name}</span>
+                    <TexMath tex={related.latex} />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
-      <section className="subcard">
-        <h3>PDF-kilder</h3>
-        <SourceLinks refs={formula.sources} state={state} />
-      </section>
-      {linkedExamQuestions.length > 0 && (
-        <section className="subcard">
-          <h3>Match i Eksamen Navigator</h3>
-          <div className="pill-row">
-            {linkedExamQuestions.map((question) => (
-              <button key={question.id} type="button" onClick={() => state.selectExamQuestion(question.id)}>
-                {question.year}: {question.title}
-              </button>
-            ))}
-          </div>
+          {linkedPatterns.length > 0 && (
+            <div className="connection-block">
+              <h4>Bruges i opgavetyper</h4>
+              <div className="pill-row">
+                {linkedPatterns.map((pattern) => (
+                  <button key={pattern.id} type="button" onClick={() => state.selectPattern(pattern.id)}>
+                    {pattern.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {relatedExamples.length > 0 && (
+            <div className="connection-block">
+              <h4>Løste eksempler</h4>
+              <div className="example-list">
+                {relatedExamples.map((example) => (
+                  <button
+                    key={example.id}
+                    type="button"
+                    className="example-card"
+                    onClick={() => state.selectExample(example.id)}
+                  >
+                    <Figure id={example.figureId} />
+                    <div>
+                      <strong>{example.title}</strong>
+                      <small>{example.pattern}</small>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {formula.sources.length > 0 && (
+            <div className="connection-block">
+              <h4>Læs i teorien (PDF)</h4>
+              <SourceLinks refs={formula.sources} state={state} />
+            </div>
+          )}
+
+          {linkedExamQuestions.length > 0 && (
+            <div className="connection-block">
+              <h4>Set til eksamen</h4>
+              <div className="pill-row">
+                {linkedExamQuestions.map((question) => (
+                  <button key={question.id} type="button" onClick={() => state.selectExamQuestion(question.id)}>
+                    {question.year}: {question.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       )}
     </section>
@@ -2196,6 +2577,9 @@ function ProblemPatterns({
   selectedPattern: ProblemPattern;
 }) {
   const { selectFormula, selectCalculator, selectExample, selectPattern } = state;
+  const finderIndex = useMemo(() => getFormulaFinderIndex(), []);
+  const labelForKey = (key: string) =>
+    pickerEntryLabel(finderIndex.pickerEntries, key) || finderIndex.variableMeta.get(key)?.labelLaTeX || key;
   const filtered = state.query.trim() ? state.searchResults.patterns : problemPatterns;
   const grouped = useMemo(() => {
     const source = filtered.length ? filtered : problemPatterns;
@@ -2209,6 +2593,9 @@ function ProblemPatterns({
     .filter((entry): entry is WorkedExample => Boolean(entry));
   const exampleSourceRefs = patternExamples.flatMap((example) => example.sources);
   const linkedExamQuestions = pastExamQuestions.filter((question) => question.patternIds.includes(selectedPattern.id));
+  const primaryExample = patternExamples[0];
+  const typicalGivenTexts = Array.from(new Set(patternExamples.flatMap((example) => example.givens))).slice(0, 7);
+  const typicalGivenKeys = Array.from(new Set(patternExamples.flatMap((example) => getExampleGivenKeys(example.id))));
 
   return (
     <div className="split">
@@ -2234,43 +2621,54 @@ function ProblemPatterns({
         ))}
       </aside>
       <section className="card detail pattern-detail">
-        <p className="eyebrow">Opgavetype</p>
-        <h2>{selectedPattern.title}</h2>
-        <p className="pattern-recognition">{selectedPattern.recognition}</p>
+        <header className="detail-head">
+          <div className="detail-heading">
+            <p className="detail-eyebrow">
+              <span className="category-pill">{getPatternCategory(selectedPattern)}</span>
+              <span className="detail-topic">Opgavetype</span>
+            </p>
+            <h2>{selectedPattern.title}</h2>
+          </div>
+        </header>
 
-        <nav className="pattern-flow" aria-label="Anbefalet rækkefølge">
-          <span>1. Genkend</span>
-          <span aria-hidden="true">→</span>
-          <span>2. Metode</span>
-          <span aria-hidden="true">→</span>
-          <span>3. Formler</span>
-          <span aria-hidden="true">→</span>
-          <span>4. Eksempel</span>
-        </nav>
-
-        <div className="coverage-badges">
-          <span>{patternExamples.length} eksempler</span>
-          <span>{selectedPattern.formulaIds.length} formler</span>
-          <span>{selectedPattern.calculatorIds.length} beregnere</span>
-        </div>
-
-        <Figure id={selectedPattern.figureId} title={selectedPattern.title} />
-
-        <section className="subcard pattern-method-card">
-          <h3>Metode — trin for trin</h3>
-          <ol className="recipe">
-            {selectedPattern.method.map((step, index) => (
-              <li key={step}>
-                <span className="step-num">{index + 1}</span>
-                {step}
-              </li>
-            ))}
-          </ol>
+        <section className="subcard recognition-card">
+          <h3>Genkend opgaven</h3>
+          <p>{selectedPattern.recognition}</p>
+          {selectedPattern.cueWords.length > 0 && (
+            <div className="cue-chips">
+              {selectedPattern.cueWords.map((cue) => (
+                <span key={cue} className="cue-chip">{cue}</span>
+              ))}
+            </div>
+          )}
         </section>
+
+        <div className="pattern-grid">
+          <section className="subcard quick-guide">
+            <h3>Hurtig guide</h3>
+            <ol className="recipe compact">
+              {selectedPattern.method.slice(0, 3).map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          </section>
+
+          <section className="subcard pattern-method-card">
+            <h3>Trin for trin</h3>
+            <ol className="recipe numbered">
+              {selectedPattern.method.map((step, index) => (
+                <li key={step}>
+                  <span className="step-num">{index + 1}</span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        </div>
 
         {selectedPattern.pitfalls && selectedPattern.pitfalls.length > 0 && (
           <section className="subcard pitfalls">
-            <h3>Faldgruber</h3>
+            <h3>Pas på</h3>
             <ul>
               {selectedPattern.pitfalls.map((pitfall) => (
                 <li key={pitfall}>{pitfall}</li>
@@ -2279,71 +2677,135 @@ function ProblemPatterns({
           </section>
         )}
 
-        <section className="subcard">
-          <h3>Formler til denne type</h3>
-          <div className="pill-row">
-            {selectedPattern.formulaIds.map((id) => {
-              const formula = formulaById(id);
-              return (
-                <button key={id} type="button" onClick={() => selectFormula(id)}>
-                  {formula?.name ?? id}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        <section className="subcard">
-          <h3>Beregnere</h3>
-          <div className="pill-row">
-            {selectedPattern.calculatorIds.map((id) => {
-              const calculator = calculatorById(id);
-              if (!calculator) return null;
-              return (
-                <button key={id} type="button" onClick={() => selectCalculator(id)}>
-                  {calculator.title}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        <section className="subcard">
-          <h3>Se det i praksis</h3>
-          <div className="example-list">
-            {patternExamples.length === 0 ? (
-              <p className="muted small">Der er endnu ikke et særskilt eksempel til denne problemtype.</p>
-            ) : (
-              patternExamples.map((example) => (
-                <button key={example.id} type="button" className="example-card" onClick={() => selectExample(example.id)}>
-                  <Figure id={example.figureId} />
-                  <div>
-                    <strong>{example.title}</strong>
-                    <small>{example.pattern}</small>
-                    <small>{example.sources.map(sourceLabel).join(' · ')}</small>
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-        </section>
-
-        {exampleSourceRefs.length > 0 && (
+        {(typicalGivenTexts.length > 0 || typicalGivenKeys.length > 0) && (
           <section className="subcard">
-            <h3>PDF-links til eksemplerne</h3>
-            <SourceLinks refs={exampleSourceRefs} state={state} />
+            <h3>Typiske begyndelsesoplysninger</h3>
+            {typicalGivenTexts.length > 0 && (
+              <ul className="given-list">
+                {typicalGivenTexts.map((text) => (
+                  <li key={text}>{text}</li>
+                ))}
+              </ul>
+            )}
+            {typicalGivenKeys.length > 0 && (
+              <div className="pill-row variable-chip-list">
+                {typicalGivenKeys.map((key) => (
+                  <span key={`${selectedPattern.id}-${key}`} className="tag math-tag">
+                    <TexMath tex={labelForKey(key)} />
+                  </span>
+                ))}
+              </div>
+            )}
           </section>
         )}
-        {linkedExamQuestions.length > 0 && (
+
+        {selectedPattern.formulaIds.length > 0 && (
           <section className="subcard">
-            <h3>Match i Eksamen Navigator</h3>
-            <div className="pill-row">
-              {linkedExamQuestions.map((question) => (
-                <button key={question.id} type="button" onClick={() => state.selectExamQuestion(question.id)}>
-                  {question.year}: {question.title}
-                </button>
-              ))}
+            <h3>Formler du skal bruge</h3>
+            <div className="related-formula-grid">
+              {selectedPattern.formulaIds.map((id) => {
+                const formula = formulaById(id);
+                if (!formula) return null;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className="related-formula-card"
+                    onClick={() => selectFormula(id)}
+                  >
+                    <span className="related-formula-name">{formula.name}</span>
+                    <TexMath tex={formula.latex} />
+                  </button>
+                );
+              })}
             </div>
+          </section>
+        )}
+
+        {primaryExample && (
+          <section className="subcard pattern-example-focus">
+            <div className="subcard-head">
+              <h3>Gennemregnet eksempel</h3>
+              <button type="button" className="link-button" onClick={() => selectExample(primaryExample.id)}>
+                Åbn fuldt eksempel →
+              </button>
+            </div>
+            <p className="example-title">{primaryExample.title}</p>
+            <p className="example-question">{primaryExample.question}</p>
+            {primaryExample.givens.length > 0 && (
+              <p className="example-givens">
+                <strong>Givet:</strong> {primaryExample.givens.slice(0, 4).join(' · ')}
+              </p>
+            )}
+            <ol className="recipe compact">
+              {primaryExample.steps.slice(0, 5).map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+            <p className="muted small">Kilde: {primaryExample.sources.map(sourceLabel).join(' · ')}</p>
+          </section>
+        )}
+
+        {(selectedPattern.calculatorIds.length > 0 ||
+          patternExamples.length > 1 ||
+          exampleSourceRefs.length > 0 ||
+          linkedExamQuestions.length > 0) && (
+          <section className="subcard connections">
+            <h3>Forbundet</h3>
+
+            {selectedPattern.calculatorIds.length > 0 && (
+              <div className="connection-block">
+                <h4>Beregnere</h4>
+                <div className="pill-row">
+                  {selectedPattern.calculatorIds.map((id) => {
+                    const calculator = calculatorById(id);
+                    if (!calculator) return null;
+                    return (
+                      <button key={id} type="button" onClick={() => selectCalculator(id)}>
+                        {calculator.title}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {patternExamples.length > 1 && (
+              <div className="connection-block">
+                <h4>Flere eksempler</h4>
+                <div className="example-list">
+                  {patternExamples.slice(1).map((example) => (
+                    <button key={example.id} type="button" className="example-card" onClick={() => selectExample(example.id)}>
+                      <Figure id={example.figureId} />
+                      <div>
+                        <strong>{example.title}</strong>
+                        <small>{example.sources.map(sourceLabel).join(' · ')}</small>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {exampleSourceRefs.length > 0 && (
+              <div className="connection-block">
+                <h4>Læs i teorien (PDF)</h4>
+                <SourceLinks refs={exampleSourceRefs} state={state} />
+              </div>
+            )}
+
+            {linkedExamQuestions.length > 0 && (
+              <div className="connection-block">
+                <h4>Set til eksamen</h4>
+                <div className="pill-row">
+                  {linkedExamQuestions.map((question) => (
+                    <button key={question.id} type="button" onClick={() => state.selectExamQuestion(question.id)}>
+                      {question.year}: {question.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
         )}
       </section>
@@ -2617,11 +3079,22 @@ function ExamplesView({
   const filtered = state.query.trim() ? state.searchResults.examples : workedExamples;
   const id = `example:${selectedExample.id}`;
   const numericExample = selectedExample.numericExample ?? supplementalNumericExamples[selectedExample.id];
+  const [showFigure, setShowFigure] = useState(false);
+  const finderIndex = useMemo(() => getFormulaFinderIndex(), []);
+  const labelForKey = (key: string) =>
+    pickerEntryLabel(finderIndex.pickerEntries, key) || finderIndex.variableMeta.get(key)?.labelLaTeX || key;
+  const givenVariableKeys = getExampleGivenKeys(selectedExample.id);
+  const quickPlan = selectedExample.steps.slice(0, 3);
+  const patternLinks = problemPatterns.filter((pattern) => pattern.exampleIds.includes(selectedExample.id));
   const linkedExamQuestions = pastExamQuestions.filter(
     (question) =>
       question.exampleIds.includes(selectedExample.id) ||
       question.formulaIds.some((formulaId) => selectedExample.formulaIds.includes(formulaId)),
   );
+
+  useEffect(() => {
+    setShowFigure(false);
+  }, [selectedExample.id]);
 
   return (
     <div className="split">
@@ -2638,10 +3111,13 @@ function ExamplesView({
           </button>
         ))}
       </aside>
-      <section className="card detail">
+      <section className="card detail example-detail">
         <header className="detail-head">
-          <div>
-            <p className="eyebrow">{selectedExample.difficulty} · {selectedExample.pattern}</p>
+          <div className="detail-heading">
+            <p className="detail-eyebrow">
+              <span className="category-pill">{selectedExample.difficulty}</span>
+              <span className="detail-topic">{selectedExample.pattern}</span>
+            </p>
             <h2>{selectedExample.title}</h2>
           </div>
           <button
@@ -2653,26 +3129,43 @@ function ExamplesView({
           </button>
         </header>
 
-        <Figure id={selectedExample.figureId} title={selectedExample.title} />
+        <section className="subcard">
+          <h3>Opgaven i én linje</h3>
+          <p>{selectedExample.question}</p>
+        </section>
 
-        <div className="grid auto-fit">
+        <div className="example-grid">
           <section className="subcard">
-            <h3>Givet</h3>
-            <ul>
+            <h3>Begyndelsesoplysninger</h3>
+            <ul className="given-list">
               {selectedExample.givens.map((given) => (
                 <li key={given}>{given}</li>
               ))}
             </ul>
+            {givenVariableKeys.length > 0 && (
+              <div className="pill-row variable-chip-list">
+                {givenVariableKeys.map((key) => (
+                  <span key={`${selectedExample.id}-${key}`} className="tag math-tag">
+                    <TexMath tex={labelForKey(key)} />
+                  </span>
+                ))}
+              </div>
+            )}
           </section>
-          <section className="subcard">
-            <h3>Spørgsmål</h3>
-            <p>{selectedExample.question}</p>
+
+          <section className="subcard quick-guide">
+            <h3>Hurtig plan (30 sek)</h3>
+            <ol className="recipe compact">
+              {quickPlan.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
           </section>
         </div>
 
         {numericExample && (
           <section className="subcard numeric-example">
-            <h3>Konkret talværdi</h3>
+            <h3>Konkret taleksempel</h3>
             <p className="muted">{numericExample.description}</p>
             <div className="variable-grid">
               {numericExample.values.map((entry) => (
@@ -2690,42 +3183,82 @@ function ExamplesView({
         )}
 
         <section className="subcard">
-          <h3>Løsningsopskrift</h3>
-          <ol className="recipe">
-            {selectedExample.steps.map((step) => (
-              <li key={step}>{step}</li>
+          <h3>Trin for trin</h3>
+          <ol className="recipe numbered">
+            {selectedExample.steps.map((step, index) => (
+              <li key={step}>
+                <span className="step-num">{index + 1}</span>
+                <span>{step}</span>
+              </li>
             ))}
           </ol>
         </section>
 
         <section className="subcard">
           <h3>Formler i opgaven</h3>
-          <div className="pill-row">
+          <div className="related-formula-grid">
             {selectedExample.formulaIds.map((id) => {
               const formula = formulaById(id);
+              if (!formula) return null;
               return (
-                <button key={id} type="button" onClick={() => state.selectFormula(id)}>
-                  {formula?.name ?? id}
+                <button key={id} type="button" className="related-formula-card" onClick={() => state.selectFormula(id)}>
+                  <span className="related-formula-name">{formula.name}</span>
+                  <TexMath tex={formula.latex} />
                 </button>
               );
             })}
           </div>
         </section>
 
-        <section className="subcard">
-          <h3>PDF-kilder</h3>
-          <SourceLinks refs={selectedExample.sources} state={state} />
-        </section>
-        {linkedExamQuestions.length > 0 && (
+        {selectedExample.figureId && (
           <section className="subcard">
-            <h3>Match i Eksamen Navigator</h3>
-            <div className="pill-row">
-              {linkedExamQuestions.map((question) => (
-                <button key={question.id} type="button" onClick={() => state.selectExamQuestion(question.id)}>
-                  {question.year}: {question.title}
-                </button>
-              ))}
+            <div className="subcard-head">
+              <h3>Illustration</h3>
+              <button type="button" className="link-button" onClick={() => setShowFigure((value) => !value)}>
+                {showFigure ? 'Skjul' : 'Vis'} illustration
+              </button>
             </div>
+            {showFigure ? (
+              <Figure id={selectedExample.figureId} title={selectedExample.title} />
+            ) : (
+              <p className="muted small">Vis kun når du vil se skitsen — resten af guiden holdes tekstfokuseret.</p>
+            )}
+          </section>
+        )}
+
+        {(patternLinks.length > 0 || linkedExamQuestions.length > 0 || selectedExample.sources.length > 0) && (
+          <section className="subcard">
+            <h3>Forbundet</h3>
+            {patternLinks.length > 0 && (
+              <div className="connection-block">
+                <h4>Problemtype</h4>
+                <div className="pill-row">
+                  {patternLinks.map((pattern) => (
+                    <button key={pattern.id} type="button" onClick={() => state.selectPattern(pattern.id)}>
+                      {pattern.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {linkedExamQuestions.length > 0 && (
+              <div className="connection-block">
+                <h4>Match i Eksamen Navigator</h4>
+                <div className="pill-row">
+                  {linkedExamQuestions.map((question) => (
+                    <button key={question.id} type="button" onClick={() => state.selectExamQuestion(question.id)}>
+                      {question.year}: {question.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {selectedExample.sources.length > 0 && (
+              <div className="connection-block">
+                <h4>Læs i teorien (PDF)</h4>
+                <SourceLinks refs={selectedExample.sources} state={state} />
+              </div>
+            )}
           </section>
         )}
       </section>
@@ -2740,6 +3273,10 @@ function ExamDecoderView({
   state: AppState;
   selectedQuestion: (typeof pastExamQuestions)[number];
 }) {
+  const finderIndex = useMemo(() => getFormulaFinderIndex(), []);
+  const labelForKey = (key: string) =>
+    pickerEntryLabel(finderIndex.pickerEntries, key) || finderIndex.variableMeta.get(key)?.labelLaTeX || key;
+  const givenVariableKeys = getExamGivenKeys(selectedQuestion.id);
   const years = useMemo(() => Array.from(new Set(pastExamQuestions.map((question) => question.year))).sort((a, b) => a - b), []);
   const [year, setYear] = useState<'all' | string>('all');
   const filtered = pastExamQuestions.filter((question) => year === 'all' || question.year.toString() === year);
@@ -2774,13 +3311,32 @@ function ExamDecoderView({
         ))}
       </aside>
 
-      <section className="card detail">
-        <p className="eyebrow">Eksamen Navigator · {selectedQuestion.year}</p>
-        <h2>{selectedQuestion.title}</h2>
+      <section className="card detail exam-detail">
+        <header className="detail-head">
+          <div className="detail-heading">
+            <p className="detail-eyebrow">
+              <span className="category-pill">{selectedQuestion.year}</span>
+              <span className="detail-topic">Eksamen Navigator</span>
+            </p>
+            <h2>{selectedQuestion.title}</h2>
+          </div>
+        </header>
         <div className="decoder-lead">
           <p><strong>Nøgleord:</strong> {selectedQuestion.cue}</p>
           <p><strong>Første move:</strong> {selectedQuestion.firstMove}</p>
         </div>
+        {givenVariableKeys.length > 0 && (
+          <section className="subcard">
+            <h3>Begyndelsesvariable (labeling)</h3>
+            <div className="pill-row variable-chip-list">
+              {givenVariableKeys.map((key) => (
+                <span key={`${selectedQuestion.id}-${key}`} className="tag math-tag">
+                  <TexMath tex={labelForKey(key)} />
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
         <section className="subcard">
           <h3>Næste bedste handling</h3>
           <div className="pill-row">
