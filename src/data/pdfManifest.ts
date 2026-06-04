@@ -169,3 +169,15 @@ export const pdfHref = (sourceId: string, page?: number) => {
   const hash = page ? `#page=${page}` : '';
   return `${encodeURI(source.path)}${hash}`;
 };
+
+/** Parse a relative PDF href from the app into source id + page (for in-app viewer). */
+export const resolvePdfOpenTarget = (href: string): { sourceId: string; page: number } | null => {
+  const pageMatch = href.match(/#page=(\d+)/i);
+  const page = pageMatch ? Math.max(1, Number(pageMatch[1])) : 1;
+  const pathPart = decodeURIComponent(href.split('#')[0]!.replace(/^\//, ''));
+  const source = pdfSources.find(
+    (entry) => pathPart === entry.path || pathPart.endsWith(entry.path) || encodeURI(entry.path) === pathPart,
+  );
+  if (!source) return null;
+  return { sourceId: source.id, page };
+};

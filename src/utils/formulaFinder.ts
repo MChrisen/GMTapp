@@ -15,6 +15,44 @@ export type CanonicalVariableMeta = {
   aliases: Set<string>;
 };
 
+/** One row in the variable dropdown (disambiguates e.g. T = temperatur vs periode). */
+export type VariablePickerEntry = {
+  id: string;
+  canonicalKey: CanonicalVariableKey;
+  labelLaTeX: string;
+  nameHint: string;
+  unitHint?: string;
+  disambiguation?: string;
+};
+
+const NAME_HINT_SLUG_RULES: Array<{ slug: string; keywords: string[] }> = [
+  { slug: 'temperatur', keywords: ['temperatur', 'kelvin', 'celsius', 'varme', 'gas', 'entropi', 'termo'] },
+  { slug: 'periode', keywords: ['periode', 'omløb', 'sving', 'frekvens', 'hz'] },
+  { slug: 'tid', keywords: ['tid', 'sekund', 'minut', 'time'] },
+  { slug: 'kraft', keywords: ['kraft', 'newton'] },
+  { slug: 'energi', keywords: ['energi', 'arbejde', 'effekt'] },
+  { slug: 'position', keywords: ['position', 'afstand', 'højde', 'længde'] },
+  { slug: 'hastighed', keywords: ['hastighed', 'fart'] },
+];
+
+function nameHintSlug(name: string): string {
+  const lower = name.toLowerCase();
+  for (const { slug, keywords } of NAME_HINT_SLUG_RULES) {
+    if (keywords.some((k) => lower.includes(k))) return slug;
+  }
+  return lower.replace(/\s+/g, '_').slice(0, 24) || 'generel';
+}
+
+const DISAMBIGUATION_LABELS: Record<string, string> = {
+  temperatur: 'temperatur',
+  periode: 'periode',
+  tid: 'tid',
+  kraft: 'kraft',
+  energi: 'energi',
+  position: 'position',
+  hastighed: 'hastighed',
+};
+
 export type FormulaVariableCanonicalRecord = {
   formulaId: string;
   canonicalKeys: Set<CanonicalVariableKey>;
@@ -232,6 +270,7 @@ export function sortVariablesForPicker(metaList: CanonicalVariableMeta[]): Canon
 
 export function buildFormulaFinderIndex(allFormulas: Formula[]) {
   const variableMeta = new Map<CanonicalVariableKey, CanonicalVariableMeta>();
+  const pickerByKeySlug = new Map<CanonicalVariableKey, Map<string, VariablePickerEntry>>();
   const formulaRecords: FormulaVariableCanonicalRecord[] = [];
 
   for (const formula of allFormulas) {
@@ -242,14 +281,55 @@ export function buildFormulaFinderIndex(allFormulas: Formula[]) {
         const key = normalizeToCanonicalKey(fragment);
         mergeCanonicalMeta(variableMeta, key, variable, fragment);
         keys.add(key);
+
+        const slug = nameHintSlug(variable.name);
+        let slugMap = pickerByKeySlug.get(key);
+        if (!slugMap) {
+          slugMap = new Map();
+          pickerByKeySlug.set(key, slugMap);
+        }
+        const labelPref = variable.latex ?? fragment;
+        const existing = slugMap.get(slug);
+        if (!existing) {
+          slugMap.set(slug, {
+            id: `${key}::${slug}`,
+            canonicalKey: key,
+            labelLaTeX: labelPref,
+            nameHint: variable.name,
+            unitHint: variable.unit,
+            disambiguation: DISAMBIGUATION_LABELS[slug],
+          });
+        } else {
+          if (labelPref.length < existing.labelLaTeX.length || existing.labelLaTeX.includes(',')) {
+            existing.labelLaTeX = labelPref;
+          }
+          if (variable.unit && !existing.unitHint) existing.unitHint = variable.unit;
+        }
       }
     }
     formulaRecords.push({ formulaId: formula.id, canonicalKeys: keys });
   }
 
-  const sortedVariables = sortVariablesForPicker(Array.from(variableMeta.values()));
+  const pickerEntries: VariablePickerEntry[] = [];
+  for (const [key, slugMap] of pickerByKeySlug) {
+    if (slugMap.size === 1) {
+      const only = [...slugMap.values()][0]!;
+      pickerEntries.push({ ...only, id: key, disambiguation: undefined });
+    } else {
+      for (const entry of slugMap.values()) {
+        pickerEntries.push(entry);
+      }
+    }
+  }
 
-  return { variableMeta, formulaRecords, sortedVariables };
+  const sortedVariables = sortVariablesForPicker(Array.from(variableMeta.values()));
+  const sortedPickerEntries = [...pickerEntries].sort((a, b) => {
+    const diff = curatedRank(a.canonicalKey) - curatedRank(b.canonicalKey);
+    if (diff !== 0) return diff;
+    return (a.disambiguation ?? '').localeCompare(b.disambiguation ?? '', 'da');
+  });
+
+  return { variableMeta, formulaRecords, sortedVariables, pickerEntries: sortedPickerEntries };
 }
 
 const INDEX = buildFormulaFinderIndex(formulas);
@@ -347,6 +427,19 @@ export function filterVariablesForPicker(search: string, sorted: CanonicalVariab
   );
 }
 
+export function filterPickerEntries(search: string, entries: VariablePickerEntry[]) {
+  const q = search.trim().toLowerCase();
+  if (!q) return entries;
+  return entries.filter(
+    (entry) =>
+      entry.canonicalKey.toLowerCase().includes(q) ||
+      entry.labelLaTeX.toLowerCase().includes(q) ||
+      entry.nameHint.toLowerCase().includes(q) ||
+      (entry.disambiguation?.toLowerCase().includes(q) ?? false) ||
+      (entry.unitHint?.toLowerCase().includes(q) ?? false),
+  );
+}
+
 export type AdvancedFinderStep = {
   formula: Formula;
   producedKey: CanonicalVariableKey;
@@ -364,7 +457,8 @@ export type AdvancedFinderChain = {
 
 export type AdvancedFinderInputs = {
   givenKeys: CanonicalVariableKey[];
-  targetKey: CanonicalVariableKey;
+  /** Optional — when omitted, find chains linking all givenKeys (any solve-for). */
+  targetKey?: CanonicalVariableKey | null;
   maxDepth?: number;
   maxMissingPerStep?: number;
   maxResults?: number;
@@ -398,14 +492,14 @@ function scoreStep(
   return score;
 }
 
-function visitKeyForLayer(state: SolverState): string {
-  return `${[...state.known].sort().join(',')}|${[...state.usedFormulaIds].sort().join(',')}`;
+function visitKeyForLayer(state: SolverState, depth: number): string {
+  return `${depth}|${[...state.known].sort().join(',')}|${[...state.usedFormulaIds].sort().join(',')}`;
 }
 
-function dedupeLayerStates(states: SolverState[]): SolverState[] {
+function dedupeLayerStates(states: SolverState[], depth: number): SolverState[] {
   const best = new Map<string, SolverState>();
   for (const s of states) {
-    const k = visitKeyForLayer(s);
+    const k = visitKeyForLayer(s, depth);
     const prev = best.get(k);
     if (!prev) {
       best.set(k, s);
@@ -431,16 +525,48 @@ function chainFromSolverState(state: SolverState): AdvancedFinderChain {
   };
 }
 
-export function findAdvancedFormulaChains(inputs: AdvancedFinderInputs): AdvancedFinderChain[] {
-  const given = new Set(inputs.givenKeys.filter(Boolean));
-  const targetKey = inputs.targetKey;
-  const maxDepth = Math.max(1, Math.min(8, inputs.maxDepth ?? 4));
-  const maxMissingPerStep = Math.max(0, Math.min(4, inputs.maxMissingPerStep ?? 2));
-  const maxResults = Math.max(1, Math.min(20, inputs.maxResults ?? 8));
+function rankAndDedupeChains(completed: AdvancedFinderChain[], maxResults: number): AdvancedFinderChain[] {
+  completed.sort((a, b) => {
+    if (a.steps.length !== b.steps.length) return a.steps.length - b.steps.length;
+    if (a.totalMissingCount !== b.totalMissingCount) return a.totalMissingCount - b.totalMissingCount;
+    return b.score - a.score;
+  });
 
-  if (!given.size || !targetKey) {
-    return [];
+  const unique = new Map<string, AdvancedFinderChain>();
+  for (const chain of completed) {
+    const sig = chain.steps.map((s) => `${s.formula.id}:${s.producedKey}`).join('>');
+    const prev = unique.get(sig);
+    if (!prev) {
+      unique.set(sig, chain);
+      continue;
+    }
+    if (
+      chain.steps.length < prev.steps.length ||
+      (chain.steps.length === prev.steps.length && chain.totalMissingCount < prev.totalMissingCount) ||
+      (chain.steps.length === prev.steps.length &&
+        chain.totalMissingCount === prev.totalMissingCount &&
+        chain.score > prev.score)
+    ) {
+      unique.set(sig, chain);
+    }
   }
+
+  return [...unique.values()]
+    .sort((a, b) => {
+      if (a.steps.length !== b.steps.length) return a.steps.length - b.steps.length;
+      if (a.totalMissingCount !== b.totalMissingCount) return a.totalMissingCount - b.totalMissingCount;
+      return b.score - a.score;
+    })
+    .slice(0, maxResults);
+}
+
+function findChainsToTarget(
+  given: Set<CanonicalVariableKey>,
+  targetKey: CanonicalVariableKey,
+  maxDepth: number,
+  maxMissingPerStep: number,
+  maxResults: number,
+): AdvancedFinderChain[] {
   if (given.has(targetKey)) {
     return [
       {
@@ -465,9 +591,8 @@ export function findAdvancedFormulaChains(inputs: AdvancedFinderInputs): Advance
   const buckets: SolverState[][] = [];
   buckets[0] = [initial];
   const completed: AdvancedFinderChain[] = [];
-  const POOL_CAP = Math.min(48, Math.max(maxResults * 8, maxResults + 12));
   let expansions = 0;
-  const MAX_EXPANSIONS = 28000;
+  const MAX_EXPANSIONS = 12000 + maxDepth * 6000;
 
   depthLoop: for (let depth = 0; depth <= maxDepth; depth++) {
     const layer = buckets[depth];
@@ -483,7 +608,6 @@ export function findAdvancedFormulaChains(inputs: AdvancedFinderInputs): Advance
     for (const current of layer) {
       if (current.known.has(targetKey)) {
         completed.push(chainFromSolverState(current));
-        if (completed.length >= POOL_CAP) break depthLoop;
         continue;
       }
       if (current.steps.length >= maxDepth) continue;
@@ -513,22 +637,13 @@ export function findAdvancedFormulaChains(inputs: AdvancedFinderInputs): Advance
           const nextKnown = new Set(current.known);
           nextKnown.add(producedKey);
 
-          const nextSteps = [
-            ...current.steps,
-            {
-              formula,
-              producedKey,
-              usedKnownKeys: usableKnown,
-              missingKeys: missing,
-            },
-          ];
-          const nextUsed = new Set(current.usedFormulaIds);
-          nextUsed.add(formula.id);
-
           children.push({
             known: nextKnown,
-            steps: nextSteps,
-            usedFormulaIds: nextUsed,
+            steps: [
+              ...current.steps,
+              { formula, producedKey, usedKnownKeys: usableKnown, missingKeys: missing },
+            ],
+            usedFormulaIds: new Set([...current.usedFormulaIds, formula.id]),
             score: current.score + delta,
             totalMissingCount: current.totalMissingCount + missing.length,
           });
@@ -536,46 +651,88 @@ export function findAdvancedFormulaChains(inputs: AdvancedFinderInputs): Advance
       }
     }
 
-    if (completed.length >= POOL_CAP) break depthLoop;
-
     if (depth < maxDepth && children.length > 0) {
-      buckets[depth + 1] = dedupeLayerStates(children);
+      buckets[depth + 1] = dedupeLayerStates(children, depth + 1);
     }
 
     if (expansions >= MAX_EXPANSIONS) break depthLoop;
   }
 
-  completed.sort((a, b) => {
-    if (a.steps.length !== b.steps.length) return a.steps.length - b.steps.length;
-    if (a.totalMissingCount !== b.totalMissingCount) return a.totalMissingCount - b.totalMissingCount;
-    return b.score - a.score;
-  });
+  return rankAndDedupeChains(completed, maxResults);
+}
 
-  const unique = new Map<string, AdvancedFinderChain>();
-  for (const chain of completed) {
-    const sig = chain.steps.map((s) => `${s.formula.id}:${s.producedKey}`).join('>');
-    const prev = unique.get(sig);
-    if (!prev) {
-      unique.set(sig, chain);
-      continue;
-    }
-    if (
-      chain.steps.length < prev.steps.length ||
-      (chain.steps.length === prev.steps.length &&
-        chain.totalMissingCount < prev.totalMissingCount) ||
-      (chain.steps.length === prev.steps.length &&
-        chain.totalMissingCount === prev.totalMissingCount &&
-        chain.score > prev.score)
-    ) {
-      unique.set(sig, chain);
-    }
+/** Formulas that already contain several of the focus variables (rearrange in one step). */
+function findDirectFormulaChains(focus: CanonicalVariableKey[], maxResults: number): AdvancedFinderChain[] {
+  const focusSet = new Set(focus);
+  const formulaById = new Map(formulas.map((f) => [f.id, f]));
+  const chains: AdvancedFinderChain[] = [];
+
+  for (const record of INDEX.formulaRecords) {
+    const overlap = [...record.canonicalKeys].filter((k) => focusSet.has(k));
+    if (overlap.length < 2) continue;
+    const formula = formulaById.get(record.formulaId);
+    if (!formula) continue;
+    const missing = [...record.canonicalKeys].filter((k) => !focusSet.has(k));
+    chains.push({
+      steps: [
+        {
+          formula,
+          producedKey: overlap[0]!,
+          usedKnownKeys: overlap.slice(1),
+          missingKeys: missing,
+        },
+      ],
+      derivedKeys: [overlap[0]!],
+      finalKnownKeys: [...new Set([...focusSet, ...record.canonicalKeys])],
+      totalMissingCount: missing.length,
+      score: overlap.length * 10 - missing.length,
+    });
   }
 
-  return [...unique.values()]
-    .sort((a, b) => {
-      if (a.steps.length !== b.steps.length) return a.steps.length - b.steps.length;
-      if (a.totalMissingCount !== b.totalMissingCount) return a.totalMissingCount - b.totalMissingCount;
-      return b.score - a.score;
-    })
-    .slice(0, maxResults);
+  return rankAndDedupeChains(chains, maxResults);
+}
+
+export function findAdvancedFormulaChains(inputs: AdvancedFinderInputs): AdvancedFinderChain[] {
+  const focus = [...new Set(inputs.givenKeys.filter(Boolean))];
+  const maxDepth = Math.max(1, Math.min(8, inputs.maxDepth ?? 4));
+  const maxMissingPerStep = Math.max(0, Math.min(4, inputs.maxMissingPerStep ?? 2));
+  const maxResults = Math.max(1, Math.min(20, inputs.maxResults ?? 8));
+
+  if (focus.length === 0) return [];
+
+  const targetKey = inputs.targetKey ?? null;
+
+  if (!targetKey) {
+    if (focus.length === 1) {
+      return findFormulas({ givenKeys: focus, outputKey: null }).slice(0, maxResults).map((row) => ({
+        steps: [
+          {
+            formula: row.formula,
+            producedKey: focus[0]!,
+            usedKnownKeys: row.canonicalKeysInFormula.filter((k) => k !== focus[0]),
+            missingKeys: row.canonicalKeysInFormula.filter((k) => k !== focus[0]),
+          },
+        ],
+        derivedKeys: [focus[0]!],
+        finalKnownKeys: row.canonicalKeysInFormula,
+        totalMissingCount: 0,
+        score: row.score,
+      }));
+    }
+
+    const direct = findDirectFormulaChains(focus, maxResults);
+    const merged: AdvancedFinderChain[] = [...direct];
+
+    for (const target of focus) {
+      const known = new Set(focus.filter((k) => k !== target));
+      if (known.size === 0) continue;
+      merged.push(
+        ...findChainsToTarget(known, target, maxDepth, maxMissingPerStep, maxResults),
+      );
+    }
+
+    return rankAndDedupeChains(merged, maxResults);
+  }
+
+  return findChainsToTarget(new Set(focus.filter((k) => k !== targetKey)), targetKey, maxDepth, maxMissingPerStep, maxResults);
 }

@@ -12,6 +12,8 @@ dist/
 .npm-cache/
 .gmt-preview.log
 .gmt-preview.pid
+.gmt-desktop.log
+.gmt-desktop.pid
 
 # Environment (secrets — never commit real keys)
 .env

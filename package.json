@@ -3,15 +3,17 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "main": "electron/main.mjs",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "predev": "npm run sync:pdfs",
     "sync:pdfs": "node scripts/sync-pdfs.mjs",
     "prebuild": "npm run sync:pdfs",
     "build": "tsc && vite build",
+    "desktop": "electron .",
+    "desktop:build": "npm run build && electron .",
     "preview": "vite preview --host 127.0.0.1",
     "extract:pdfs": "python3 scripts/extract_pdfs.py",
-    "sync:pdfs": "node scripts/sync-pdfs.mjs",
     "refresh:pdfs": "npm run sync:pdfs && npm run extract:pdfs",
     "build:search-index": "python3 scripts/build_search_index.py",
     "validate:data": "node scripts/validate-data.mjs",
@@ -22,6 +24,7 @@
     "@vitejs/plugin-react": "latest",
     "katex": "^0.16.45",
     "lucide-react": "latest",
+    "pdfjs-dist": "^4.10.38",
     "react": "latest",
     "react-dom": "latest",
     "typescript": "latest",
@@ -30,6 +33,7 @@
   "devDependencies": {
     "@types/katex": "^0.16.8",
     "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3"
+    "@types/react-dom": "^19.2.3",
+    "electron": "^35.7.5"
   }
 }
