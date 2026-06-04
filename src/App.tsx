@@ -1938,6 +1938,7 @@ function FormulaFinder({ state }: { state: AppState }) {
 
         <div className="problem-match-grid">
           {visibleProblemMatches.map((match) => {
+            const examQuestion = match.kind === 'exam' ? pastExamQuestions.find((q) => q.id === match.id) : null;
             const sourceLabelText =
               match.kind === 'exam'
                 ? `${match.year} · Eksamen`
@@ -1946,7 +1947,7 @@ function FormulaFinder({ state }: { state: AppState }) {
                   : `PDF-opgave · ${match.sourceTitle}`;
             const cueText =
               match.kind === 'exam'
-                ? pastExamQuestions.find((q) => q.id === match.id)?.cue
+                ? examQuestion?.cue
                 : match.kind === 'example'
                   ? exampleById(match.id)?.question
                   : match.snippet;
@@ -1993,9 +1994,16 @@ function FormulaFinder({ state }: { state: AppState }) {
                 )}
                 <div className="pill-row">
                   {match.kind === 'exam' ? (
-                    <button type="button" onClick={() => state.selectExamQuestion(match.id)}>
-                      Åbn i Eksamen Navigator
-                    </button>
+                    <>
+                      <button type="button" onClick={() => state.selectExamQuestion(match.id)}>
+                        Åbn i Eksamen Navigator
+                      </button>
+                      {examQuestion && (
+                        <button type="button" onClick={() => state.openPdf(examQuestion.source.sourceId, examQuestion.source.page)}>
+                          Åbn PDF-side
+                        </button>
+                      )}
+                    </>
                   ) : match.kind === 'example' ? (
                     <button type="button" onClick={() => state.selectExample(match.id)}>
                       Åbn løst eksempel
@@ -2023,38 +2031,48 @@ function FormulaFinder({ state }: { state: AppState }) {
               Disse er tæt på, men har ekstra variable i forhold til dit præcise valg.
             </p>
             <div className="problem-match-grid">
-              {visibleNearestProblemMatches.map((match) => (
-                <article key={`near-${match.kind}-${match.id}`} className="problem-match-card near">
-                  <header>
-                    <strong>{match.title}</strong>
-                    <span className="tag">{match.kind === 'exam' ? `${match.year} · Eksamen` : match.kind === 'example' ? 'Eksempel' : 'PDF-opgave'}</span>
-                  </header>
-                  <div className="match-badges">
-                    <span className="badge badge-out">Match: {match.similarityPercent}%</span>
-                    <span className="badge">Ekstra variable: {match.extraTaskKeys.length}</span>
-                    {match.extraTaskKeys.slice(0, 4).map((key) => (
-                      <span key={`near-extra-${match.id}-${key}`} className="badge badge-math">
-                        <TexMath tex={labelFor(key)} />
-                      </span>
-                    ))}
-                  </div>
-                  <div className="pill-row">
-                    {match.kind === 'exam' ? (
-                      <button type="button" onClick={() => state.selectExamQuestion(match.id)}>
-                        Åbn i Eksamen Navigator
-                      </button>
-                    ) : match.kind === 'example' ? (
-                      <button type="button" onClick={() => state.selectExample(match.id)}>
-                        Åbn løst eksempel
-                      </button>
-                    ) : (
-                      <button type="button" onClick={() => state.openPdf(match.sourceId, match.page)}>
-                        Åbn PDF-side
-                      </button>
-                    )}
-                  </div>
-                </article>
-              ))}
+              {visibleNearestProblemMatches.map((match) => {
+                const examQuestion = match.kind === 'exam' ? pastExamQuestions.find((q) => q.id === match.id) : null;
+                return (
+                  <article key={`near-${match.kind}-${match.id}`} className="problem-match-card near">
+                    <header>
+                      <strong>{match.title}</strong>
+                      <span className="tag">{match.kind === 'exam' ? `${match.year} · Eksamen` : match.kind === 'example' ? 'Eksempel' : 'PDF-opgave'}</span>
+                    </header>
+                    <div className="match-badges">
+                      <span className="badge badge-out">Match: {match.similarityPercent}%</span>
+                      <span className="badge">Ekstra variable: {match.extraTaskKeys.length}</span>
+                      {match.extraTaskKeys.slice(0, 4).map((key) => (
+                        <span key={`near-extra-${match.id}-${key}`} className="badge badge-math">
+                          <TexMath tex={labelFor(key)} />
+                        </span>
+                      ))}
+                    </div>
+                    <div className="pill-row">
+                      {match.kind === 'exam' ? (
+                        <>
+                          <button type="button" onClick={() => state.selectExamQuestion(match.id)}>
+                            Åbn i Eksamen Navigator
+                          </button>
+                          {examQuestion && (
+                            <button type="button" onClick={() => state.openPdf(examQuestion.source.sourceId, examQuestion.source.page)}>
+                              Åbn PDF-side
+                            </button>
+                          )}
+                        </>
+                      ) : match.kind === 'example' ? (
+                        <button type="button" onClick={() => state.selectExample(match.id)}>
+                          Åbn løst eksempel
+                        </button>
+                      ) : (
+                        <button type="button" onClick={() => state.openPdf(match.sourceId, match.page)}>
+                          Åbn PDF-side
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </section>
         )}
