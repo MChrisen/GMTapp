@@ -1617,7 +1617,7 @@ function Overview({
 }
 
 function FormulaFinder({ state }: { state: AppState }) {
-  const { pickerEntries, variableMeta } = useMemo(() => getFormulaFinderIndex(), []);
+  const { pickerEntries, sortedVariables, variableMeta } = useMemo(() => getFormulaFinderIndex(), []);
   const [givenKeys, setGivenKeys] = useState(() => new Set<string>());
   const [outputKey, setOutputKey] = useState('');
 
@@ -1670,6 +1670,7 @@ function FormulaFinder({ state }: { state: AppState }) {
           label="Variable i opgaven"
           hint="Vælg alle størrelser du kender eller skal bruge."
           entries={pickerEntries}
+          chipVariables={sortedVariables}
           selectedKeys={givenKeys}
           onToggle={toggleGiven}
           entryLabel={labelFor}
@@ -1705,7 +1706,7 @@ function FormulaFinder({ state }: { state: AppState }) {
         <div className="finder-results">
           {grouped.map(([category, rows]) => (
             <div key={category} className="finder-result-group">
-              <h4 className="finder-result-group-title">{category}</h4>
+              <h4 className="category-heading finder-result-group-title">{category}</h4>
               <div className="finder-result-group-cards">
                 {rows.map(({ formula, canonicalKeysInFormula }) => {
                   const givenMatched = [...givenKeys].filter((k) => canonicalKeysInFormula.includes(k));
@@ -1755,7 +1756,7 @@ function FormulaFinder({ state }: { state: AppState }) {
 }
 
 function AdvancedFormulaFinder({ state }: { state: AppState }) {
-  const { pickerEntries, variableMeta } = useMemo(() => getFormulaFinderIndex(), []);
+  const { pickerEntries, sortedVariables, variableMeta } = useMemo(() => getFormulaFinderIndex(), []);
   const [givenKeys, setGivenKeys] = useState(() => new Set<string>());
   const [maxDepth, setMaxDepth] = useState(4);
 
@@ -1798,6 +1799,7 @@ function AdvancedFormulaFinder({ state }: { state: AppState }) {
           label="Variable i opgaven"
           hint="Fx m, g og W — eller p, V og T (temperatur)."
           entries={pickerEntries}
+          chipVariables={sortedVariables}
           selectedKeys={givenKeys}
           onToggle={toggleGiven}
           entryLabel={labelFor}
@@ -1918,41 +1920,108 @@ function FormulaLibrary({
   isBookmarked: (id: string) => boolean;
   toggleBookmark: (id: string) => void;
 }) {
-  const filtered = state.query.trim() ? state.searchResults.formulas : formulasWithExamples;
+  const globalFiltered = state.query.trim() ? state.searchResults.formulas : formulasWithExamples;
+  const [categoryFilter, setCategoryFilter] = useState<string | 'all'>('all');
+  const [listQuery, setListQuery] = useState('');
+
+  const listFiltered = useMemo(() => {
+    const q = listQuery.trim().toLowerCase();
+    return globalFiltered.filter((formula) => {
+      if (categoryFilter !== 'all' && formula.category !== categoryFilter) return false;
+      if (!q) return true;
+      return (
+        formula.name.toLowerCase().includes(q) ||
+        formula.topic.toLowerCase().includes(q) ||
+        formula.category.toLowerCase().includes(q) ||
+        formula.keywords.some((k) => k.toLowerCase().includes(q))
+      );
+    });
+  }, [globalFiltered, categoryFilter, listQuery]);
+
+  const visibleCategories = useMemo(() => {
+    if (categoryFilter !== 'all') return [categoryFilter];
+    return categories.filter((cat) => listFiltered.some((f) => f.category === cat));
+  }, [categoryFilter, listFiltered]);
 
   return (
-    <div className="split">
-      <aside className="list-panel">
-        {categories.map((category) => {
-          const formulasInCategory = filtered.filter((formula) => formula.category === category);
-          if (!formulasInCategory.length) return null;
-          return (
-            <div key={category}>
-              <h3>{category}</h3>
-              {formulasInCategory.map((formula) => (
-                <button
-                  key={formula.id}
-                  className={formula.id === selectedFormula.id ? 'active item' : 'item'}
-                  type="button"
-                  onClick={() => state.selectFormula(formula.id)}
-                >
-                  <span>{formula.name}</span>
-                  <small>{formula.topic}</small>
-                  <span className="list-equation">
-                    <TexMath tex={formula.latex} />
-                  </span>
-                </button>
-              ))}
-            </div>
-          );
-        })}
-      </aside>
-      <FormulaDetail
-        state={state}
-        formula={selectedFormula}
-        isBookmarked={isBookmarked}
-        toggleBookmark={toggleBookmark}
-      />
+    <div className="formula-library-shell">
+      <div className="library-toolbar card">
+        <label className="library-search">
+          <span className="muted small">Filtrér formler i biblioteket</span>
+          <input
+            type="search"
+            value={listQuery}
+            onChange={(event) => setListQuery(event.target.value)}
+            placeholder="Søg navn, emne eller nøgleord …"
+            autoComplete="off"
+          />
+        </label>
+        <div className="category-filter-row" role="tablist" aria-label="Formelkategorier">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={categoryFilter === 'all'}
+            className={categoryFilter === 'all' ? 'active' : undefined}
+            onClick={() => setCategoryFilter('all')}
+          >
+            Alle ({globalFiltered.length})
+          </button>
+          {categories.map((category) => {
+            const count = globalFiltered.filter((f) => f.category === category).length;
+            if (!count) return null;
+            return (
+              <button
+                key={category}
+                type="button"
+                role="tab"
+                aria-selected={categoryFilter === category}
+                className={categoryFilter === category ? 'active' : undefined}
+                onClick={() => setCategoryFilter(category)}
+              >
+                {category} ({count})
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="split split--library">
+        <aside className="list-panel list-panel--library" aria-label="Formelliste">
+          {visibleCategories.length === 0 ? (
+            <p className="muted small list-panel-empty">Ingen formler matcher filteret.</p>
+          ) : (
+            visibleCategories.map((category) => {
+              const formulasInCategory = listFiltered.filter((formula) => formula.category === category);
+              if (!formulasInCategory.length) return null;
+              return (
+                <section key={category} className="list-category-block">
+                  <h3 className="category-heading">
+                    {category}
+                    <span className="category-count">{formulasInCategory.length}</span>
+                  </h3>
+                  {formulasInCategory.map((formula) => (
+                    <button
+                      key={formula.id}
+                      className={formula.id === selectedFormula.id ? 'active item item--formula' : 'item item--formula'}
+                      type="button"
+                      onClick={() => state.selectFormula(formula.id)}
+                    >
+                      <span className="item-title">{formula.name}</span>
+                      <small className="item-topic">{formula.topic}</small>
+                    </button>
+                  ))}
+                </section>
+              );
+            })
+          )}
+        </aside>
+        <FormulaDetail
+          state={state}
+          formula={selectedFormula}
+          isBookmarked={isBookmarked}
+          toggleBookmark={toggleBookmark}
+        />
+      </div>
     </div>
   );
 }
@@ -1981,7 +2050,8 @@ function FormulaDetail({
     <section className="card detail">
       <header className="detail-head">
         <div>
-          <p className="eyebrow">{formula.category} · {formula.topic}</p>
+          <span className="category-pill">{formula.category}</span>
+          <p className="detail-topic muted">{formula.topic}</p>
           <h2>{formula.name}</h2>
         </div>
         <button
@@ -2144,8 +2214,11 @@ function ProblemPatterns({
     <div className="split">
       <aside className="list-panel">
         {(['Mekanik', 'Termodynamik'] as const).map((groupName) => (
-          <div key={groupName}>
-            <h3>{groupName}</h3>
+          <div key={groupName} className="list-category-block">
+            <h3 className="category-heading">
+              {groupName}
+              <span className="category-count">{grouped[groupName].length}</span>
+            </h3>
             {grouped[groupName].map((pattern) => (
               <button
                 key={pattern.id}
@@ -2311,8 +2384,11 @@ function CalculatorHub({
     <div className="split">
       <aside className="list-panel">
         {groupedCalculators.map(({ category, items }) => (
-          <div key={category} className="calculator-group">
-            <h3>{category}</h3>
+          <div key={category} className="calculator-group list-category-block">
+            <h3 className="category-heading">
+              {category}
+              <span className="category-count">{items.length}</span>
+            </h3>
             {items.map((calculator) => (
               <button
                 key={calculator.id}

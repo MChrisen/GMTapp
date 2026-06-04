@@ -1,15 +1,16 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Math as TexMath } from './Math';
-import type { VariablePickerEntry } from '../utils/formulaFinder';
-import { filterPickerEntries } from '../utils/formulaFinder';
+import type { CanonicalVariableMeta, VariablePickerEntry } from '../utils/formulaFinder';
+import { filterPickerEntries, filterVariablesForPicker } from '../utils/formulaFinder';
 
 type VariablePickerProps = {
   label: string;
   hint?: string;
   entries: VariablePickerEntry[];
+  /** Full symbol list for the chip grid (one per canonical key). */
+  chipVariables: CanonicalVariableMeta[];
   selectedKeys: Set<string>;
   onToggle: (canonicalKey: string) => void;
-  /** Map canonical key → display label for selected chips */
   entryLabel: (canonicalKey: string) => string;
 };
 
@@ -17,6 +18,7 @@ export function VariablePicker({
   label,
   hint,
   entries,
+  chipVariables,
   selectedKeys,
   onToggle,
   entryLabel,
@@ -26,7 +28,8 @@ export function VariablePicker({
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  const filtered = useMemo(() => filterPickerEntries(filter, entries), [filter, entries]);
+  const dropdownList = useMemo(() => filterPickerEntries(filter, entries), [filter, entries]);
+  const chipList = useMemo(() => filterVariablesForPicker(filter, chipVariables), [filter, chipVariables]);
 
   useEffect(() => {
     if (!open) return;
@@ -45,7 +48,12 @@ export function VariablePicker({
 
   return (
     <div className="variable-picker-field" ref={wrapRef}>
-      <span className="muted small">{label}</span>
+      <div className="variable-picker-label-row">
+        <span className="variable-picker-label">{label}</span>
+        <span className="variable-picker-count muted small">
+          {chipVariables.length} symboler · {selectedKeys.size} valgt
+        </span>
+      </div>
       {hint ? <p className="muted small variable-picker-hint">{hint}</p> : null}
 
       {selectedKeys.size > 0 && (
@@ -80,7 +88,7 @@ export function VariablePicker({
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
-          placeholder="Søg symbol eller størrelse (f.eks. temperatur, v₀, p) …"
+          placeholder="Søg symbol eller størrelse (f.eks. temperatur, v₀, p, omega) …"
           autoComplete="off"
         />
         <button
@@ -93,10 +101,10 @@ export function VariablePicker({
         </button>
         {open && (
           <ul id={listId} className="variable-picker-dropdown" role="listbox">
-            {filtered.length === 0 ? (
+            {dropdownList.length === 0 ? (
               <li className="variable-picker-empty muted small">Ingen match — prøv et andet ord</li>
             ) : (
-              filtered.slice(0, 80).map((entry) => {
+              dropdownList.map((entry) => {
                 const selected = selectedKeys.has(entry.canonicalKey);
                 return (
                   <li key={entry.id}>
@@ -124,19 +132,22 @@ export function VariablePicker({
         )}
       </div>
 
-      <div className="variable-picker-quick" role="group" aria-label="Hurtigvalg">
-        {entries.slice(0, 24).map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            className={`variable-chip${selectedKeys.has(entry.canonicalKey) ? ' selected' : ''}`}
-            onClick={() => onToggle(entry.canonicalKey)}
-            title={entry.disambiguation ? `${entry.nameHint} (${entry.disambiguation})` : entry.nameHint}
-          >
-            <TexMath tex={entry.labelLaTeX} />
-            {entry.disambiguation ? <span className="chip-disambig">{entry.disambiguation.slice(0, 3)}</span> : null}
-          </button>
-        ))}
+      <div className="variable-picker-all" role="group" aria-label="Alle variable">
+        {chipList.length === 0 ? (
+          <p className="muted small">Ingen variable matcher søgningen.</p>
+        ) : (
+          chipList.map((meta) => (
+            <button
+              key={meta.key}
+              type="button"
+              className={`variable-chip${selectedKeys.has(meta.key) ? ' selected' : ''}`}
+              onClick={() => onToggle(meta.key)}
+              title={meta.nameHint}
+            >
+              <TexMath tex={meta.labelLaTeX} />
+            </button>
+          ))
+        )}
       </div>
     </div>
   );
