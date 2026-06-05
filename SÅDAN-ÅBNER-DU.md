@@ -26,7 +26,17 @@ Usigneret app — det er normalt:
 1. **Højreklik** på appen → **Åbn** → **Åbn**
 2. Eller: Systemindstillinger → Privatliv og sikkerhed → **Åbn alligevel**
 
-## 4. Stadig problemer?
+## Windows
+
+1. [Releases](https://github.com/MChrisen/GMTapp/releases/latest) → **`GMT-Eksamenhjaelp-win-x64.exe`**
+2. Dobbeltklik (evt. flyt til Skrivebord)
+3. Ved **Windows beskytter din PC**: **Flere oplysninger** → **Kør alligevel**
+
+Ingen installation og ingen Node.js.
+
+---
+
+## 4. Stadig problemer? (Mac)
 
 Terminal (erstatter sti med din Downloads-mappe):
 

@@ -2,27 +2,31 @@
 
 Offline eksamenshjælp til GMT.
 
-## Brug på Mac (ingen Node.js)
+## Download (ingen Node.js)
 
-1. Gå til **[Releases (seneste)](https://github.com/MChrisen/GMTapp/releases/latest)**
-2. **Apple Silicon (M1/M2/M3):** `GMT-Eksamenhjaelp-mac-arm64.dmg` — **Intel Mac:** `GMT-Eksamenhjaelp-mac-x64.dmg`  
-   DMG driller? Brug **.zip** i stedet.
-3. Åbn DMG → træk **GMT Eksamenhjælp** til Programmer
-4. Dobbeltklik appen
+**[GitHub Releases → seneste version](https://github.com/MChrisen/GMTapp/releases/latest)**
 
-Første gang: højreklik → **Åbn** → **Åbn**, hvis macOS advarer.
+### Mac
 
-## Brug på Windows
+| Processor | Fil |
+|-----------|-----|
+| **Apple Silicon** (M1/M2/M3) | `GMT-Eksamenhjaelp-mac-arm64.dmg` (eller `.zip`) |
+| **Intel** | `GMT-Eksamenhjaelp-mac-x64.dmg` (eller `.zip`) |
 
-Download **`GMT-Eksamenhjaelp-win-x64.exe`** (portable) fra Releases og dobbeltklik.
+### Windows
 
-## Udvikler (byg selv)
+| Fil | Brug |
+|-----|------|
+| **`GMT-Eksamenhjaelp-win-x64.exe`** | Dobbeltklik — kører uden installation |
+
+Ved Windows SmartScreen: **Flere oplysninger** → **Kør alligevel**.
+
+Mere hjælp: **[SÅDAN-ÅBNER-DU.md](SÅDAN-ÅBNER-DU.md)**
+
+## Udvikler
 
 ```bash
-git clone https://github.com/MChrisen/GMTapp.git
-cd GMTapp
 npm install
-npm run package:mac    # → release/GMT-Eksamenhjaelp-mac-arm64.dmg
+npm run package:mac    # Mac DMG/ZIP i release/
+npm run package:win    # Windows .exe i release/
 ```
-
-Den færdige app ligger i mappen **`release/`**.

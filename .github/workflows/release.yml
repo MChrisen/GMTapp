@@ -27,8 +27,7 @@ jobs:
         run: ./scripts/package-mac-release.sh arm64
       - name: Package Intel Mac
         run: ./scripts/package-mac-release.sh x64
-      - name: List release files
-        run: ls -lh release/*.dmg release/*.zip
+      - run: ls -lh release/*.dmg release/*.zip
       - uses: actions/upload-artifact@v4
         with:
           name: mac-installer
@@ -37,33 +36,62 @@ jobs:
             release/*.zip
           retention-days: 90
 
+  build-win:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Package Windows x64
+        shell: pwsh
+        run: ./scripts/package-win-release.ps1
+      - run: dir release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win-installer
+          path: release/*.exe
+          retention-days: 90
+
   publish-release:
-    needs: [build-mac]
+    needs: [build-mac, build-win]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: mac-installer
           path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: win-installer
+          path: release
       - run: ls -lh release/
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           body: |
-            ## Mac — vælg den rigtige fil
+            ## Mac
 
             | Din Mac | Download |
             |---------|----------|
-            | **Apple Silicon** (M1/M2/M3) | `GMT-Eksamenhjaelp-mac-arm64.dmg` |
-            | **Intel** | `GMT-Eksamenhjaelp-mac-x64.dmg` |
+            | **Apple Silicon** (M1/M2/M3) | `GMT-Eksamenhjaelp-mac-arm64.dmg` eller `.zip` |
+            | **Intel** | `GMT-Eksamenhjaelp-mac-x64.dmg` eller `.zip` |
 
-            Hvis DMG ikke åbner: brug **.zip**, udpak, højreklik appen → **Åbn**.
+            Hvis DMG ikke åbner: brug **.zip**. Første gang: **højreklik → Åbn → Åbn**.
 
-            Første gang macOS advarer: **højreklik → Åbn → Åbn** (usigneret app).
+            ## Windows
+
+            Download **`GMT-Eksamenhjaelp-win-x64.exe`** — dobbeltklik (portable, ingen installation).
+
+            Ved SmartScreen: **Flere oplysninger** → **Kør alligevel**.
           files: |
             release/GMT-Eksamenhjaelp-mac-arm64.dmg
             release/GMT-Eksamenhjaelp-mac-arm64.zip
             release/GMT-Eksamenhjaelp-mac-x64.dmg
             release/GMT-Eksamenhjaelp-mac-x64.zip
+            release/GMT-Eksamenhjaelp-win-x64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
