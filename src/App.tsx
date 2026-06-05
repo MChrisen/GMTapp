@@ -24,6 +24,7 @@ import { calculatorById, calculators } from './data/calculators';
 import { pastExamQuestions, stuckCues, supplementalNumericExamples } from './data/examAids';
 import { exampleById, patternById, problemPatterns, workedExamples } from './data/examples';
 import { formulaById, formulasWithExamples } from './data/formulas';
+import { indexedProblemCategories, indexedProblemClusters, indexedTaskCount } from './data/problemIndex';
 import { pdfCorpus } from './data/pdfCorpus';
 import { CONSTANT_CATEGORIES, PHYSICAL_CONSTANTS, SUBSTANCE_PROPERTIES } from './data/constants';
 import type { PhysicalConstant } from './data/constants';
@@ -75,7 +76,7 @@ function readStoredProblemsMode(): ProblemsMode {
   if (typeof window === 'undefined') return 'patterns';
   try {
     const raw = sessionStorage.getItem(PROBLEMS_MODE_STORAGE_KEY);
-    if (raw === 'patterns' || raw === 'examples' || raw === 'exam') return raw;
+    if (raw === 'patterns' || raw === 'examples' || raw === 'exam' || raw === 'index') return raw;
   } catch {
     /* ignore */
   }
@@ -126,6 +127,7 @@ const PROBLEMS_TAB_LABELS: Record<ProblemsMode, string> = {
   patterns: 'Problemtyper',
   examples: 'Eksempler',
   exam: 'Eksamen Navigator',
+  index: 'Opgaveindeks',
 };
 
 const REFERENCE_TAB_LABELS: Record<ReferenceMode, string> = {
@@ -664,8 +666,8 @@ function App() {
           <div>
             <h1>GMT Eksamenhjælp</h1>
             <p className="chrome-tagline">
-              Offline · {formulasWithExamples.length} formler · {problemPatterns.length} problemtyper · {pdfSources.length}{' '}
-              PDF-kilder
+              Offline · {formulasWithExamples.length} formler · {problemPatterns.length} problemtyper · {indexedTaskCount}{' '}
+              indekserede opgaver · {pdfSources.length} PDF-kilder
             </p>
           </div>
         </div>
@@ -924,6 +926,15 @@ function App() {
                     >
                       Eksamen Navigator
                     </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={problemsMode === 'index'}
+                      className={problemsMode === 'index' ? 'active' : ''}
+                      onClick={() => setProblemsMode('index')}
+                    >
+                      Opgaveindeks
+                    </button>
                   </div>
                 </div>
                 {problemsMode === 'patterns' ? (
@@ -935,6 +946,8 @@ function App() {
                     isBookmarked={isBookmarked}
                     toggleBookmark={toggleBookmark}
                   />
+                ) : problemsMode === 'index' ? (
+                  <ProblemIndexView state={state} />
                 ) : (
                   <>
                     <ExamDecoderView state={state} selectedQuestion={selectedExamQuestion} />
@@ -2935,6 +2948,196 @@ function ProblemPatterns({
             )}
           </section>
         )}
+      </section>
+    </div>
+  );
+}
+
+function ProblemIndexView({ state }: { state: AppState }) {
+  const query = state.query.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    if (!query) return indexedProblemClusters;
+    return indexedProblemClusters.filter((cluster) => {
+      const haystack = [
+        cluster.title,
+        cluster.summary,
+        cluster.category,
+        cluster.patternIds.join(' '),
+        cluster.formulaIds.join(' '),
+        cluster.exampleIds.join(' '),
+        cluster.taskLists.flatMap((list) => list.taskCodes).join(' '),
+      ]
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [query]);
+
+  const [selectedClusterId, setSelectedClusterId] = useState(indexedProblemClusters[0]?.id ?? '');
+
+  useEffect(() => {
+    if (!filtered.length) return;
+    if (!filtered.some((cluster) => cluster.id === selectedClusterId)) {
+      setSelectedClusterId(filtered[0]!.id);
+    }
+  }, [filtered, selectedClusterId]);
+
+  const selectedCluster =
+    filtered.find((cluster) => cluster.id === selectedClusterId) ??
+    filtered[0] ??
+    indexedProblemClusters.find((cluster) => cluster.id === selectedClusterId) ??
+    indexedProblemClusters[0];
+
+  if (!selectedCluster) {
+    return (
+      <section className="card detail">
+        <p className="muted small">Ingen indekserede opgaver fundet endnu.</p>
+      </section>
+    );
+  }
+
+  const grouped = useMemo(() => {
+    const source = filtered.length ? filtered : indexedProblemClusters;
+    return Object.fromEntries(
+      indexedProblemCategories.map((category) => [category, source.filter((cluster) => cluster.category === category)]),
+    ) as Record<(typeof indexedProblemCategories)[number], typeof indexedProblemClusters>;
+  }, [filtered]);
+
+  const linkedPatterns = selectedCluster.patternIds
+    .map((id) => patternById(id))
+    .filter((entry): entry is ProblemPattern => Boolean(entry));
+  const linkedFormulas = selectedCluster.formulaIds
+    .map((id) => formulaById(id))
+    .filter((entry): entry is Formula => Boolean(entry));
+  const linkedExamples = selectedCluster.exampleIds
+    .map((id) => exampleById(id))
+    .filter((entry): entry is WorkedExample => Boolean(entry));
+  const clusterTaskCount = selectedCluster.taskLists.reduce((sum, list) => sum + list.taskCodes.length, 0);
+
+  return (
+    <div className="split">
+      <aside className="list-panel">
+        {indexedProblemCategories.map((category) => (
+          <div key={category} className="list-category-block">
+            <h3 className="category-heading">
+              {category}
+              <span className="category-count">{grouped[category].length}</span>
+            </h3>
+            {grouped[category].map((cluster) => (
+              <button
+                key={cluster.id}
+                className={cluster.id === selectedCluster.id ? 'active item' : 'item'}
+                type="button"
+                onClick={() => setSelectedClusterId(cluster.id)}
+              >
+                <span>{cluster.title}</span>
+                <small>{cluster.taskLists.reduce((sum, list) => sum + list.taskCodes.length, 0)} opgaver</small>
+              </button>
+            ))}
+          </div>
+        ))}
+      </aside>
+
+      <section className="card detail pattern-detail">
+        <header className="detail-head">
+          <div className="detail-heading">
+            <p className="detail-eyebrow">
+              <span className="category-pill">{selectedCluster.category}</span>
+              <span className="detail-topic">PDF-opgaveindeks</span>
+            </p>
+            <h2>{selectedCluster.title}</h2>
+            <p className="muted small">
+              {clusterTaskCount} opgaver indekseret i denne gruppe · {indexedTaskCount} totalt
+            </p>
+          </div>
+        </header>
+
+        <section className="subcard">
+          <h3>Gruppering</h3>
+          <p>{selectedCluster.summary}</p>
+          <p className="muted small">Kun opgaver fra de lokale PDF-kilder er medtaget i dette indeks.</p>
+        </section>
+
+        <div className="pattern-grid">
+          {selectedCluster.taskLists.map((list) => (
+            <section key={`${selectedCluster.id}-${list.level}`} className="subcard">
+              <h3>
+                {list.level} <span className="category-count">{list.taskCodes.length}</span>
+              </h3>
+              <div className="pill-row">
+                {list.taskCodes.map((code) => (
+                  <span key={`${selectedCluster.id}-${list.level}-${code}`} className="tag">
+                    {code}
+                  </span>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+
+        {(linkedPatterns.length > 0 || linkedFormulas.length > 0 || linkedExamples.length > 0) && (
+          <section className="subcard connections">
+            <h3>Forbundet</h3>
+            {linkedPatterns.length > 0 && (
+              <div className="connection-block">
+                <h4>Overordnede opgavetyper</h4>
+                <div className="pill-row">
+                  {linkedPatterns.map((pattern) => (
+                    <button key={pattern.id} type="button" onClick={() => state.selectPattern(pattern.id)}>
+                      {pattern.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {linkedFormulas.length > 0 && (
+              <div className="connection-block">
+                <h4>Kerneformler i gruppen</h4>
+                <div className="related-formula-grid">
+                  {linkedFormulas.map((formula) => (
+                    <button
+                      key={`${selectedCluster.id}-${formula.id}`}
+                      type="button"
+                      className="related-formula-card"
+                      onClick={() => state.selectFormula(formula.id)}
+                    >
+                      <span className="related-formula-name">{formula.name}</span>
+                      <TexMath tex={formula.latex} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {linkedExamples.length > 0 && (
+              <div className="connection-block">
+                <h4>Synlige eksempler fra PDF</h4>
+                <div className="example-list">
+                  {linkedExamples.map((example) => (
+                    <button
+                      key={`${selectedCluster.id}-${example.id}`}
+                      type="button"
+                      className="example-card"
+                      onClick={() => state.selectExample(example.id)}
+                    >
+                      <Figure id={example.figureId} />
+                      <div>
+                        <strong>{example.title}</strong>
+                        <small>{example.pattern}</small>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        <section className="subcard">
+          <h3>PDF-kildesider for dette opgavecluster</h3>
+          <SourceLinks refs={selectedCluster.sourceRefs} state={state} />
+        </section>
       </section>
     </div>
   );

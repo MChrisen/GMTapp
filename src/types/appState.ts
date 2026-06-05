@@ -3,7 +3,7 @@ import type { SearchResults } from '../utils/search';
 
 export type View = 'formulas' | 'problems' | 'reference';
 export type FormulasMode = 'cards' | 'finder' | 'advancedFinder' | 'calculators' | 'sheet';
-export type ProblemsMode = 'patterns' | 'examples' | 'exam';
+export type ProblemsMode = 'patterns' | 'examples' | 'exam' | 'index';
 export type ReferenceMode = 'tools' | 'sources';
 
 export type AppState = {

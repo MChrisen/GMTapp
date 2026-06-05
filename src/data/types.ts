@@ -33,6 +33,7 @@ export type Formula = {
 
 export type FormulaCategory =
   | 'Kinematik'
+  | 'Vektorer'
   | 'Krafter'
   | 'Arbejde og energi'
   | 'Impuls'

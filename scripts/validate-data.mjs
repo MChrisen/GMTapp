@@ -6,6 +6,8 @@ const ROOT = resolve(process.cwd());
 const read = (path) => readFileSync(resolve(ROOT, path), 'utf8');
 
 const formulasSrc = read('src/data/formulas.ts');
+const vectorFormulasSrc = read('src/data/vectorFormulas.ts');
+const combinedFormulasSrc = `${formulasSrc}\n${vectorFormulasSrc}`;
 const examplesSrc = read('src/data/examples.ts');
 const calculatorsSrc = read('src/data/calculators.ts');
 const examAidsSrc = read('src/data/examAids.ts');
@@ -13,7 +15,7 @@ const examAidsSrc = read('src/data/examAids.ts');
 const collectIds = (source, pattern) => Array.from(source.matchAll(pattern)).map((m) => m[1]);
 const unique = (values) => Array.from(new Set(values));
 
-const formulaIds = unique(collectIds(formulasSrc, /id:\s*'([^']+)'/g));
+const formulaIds = unique(collectIds(combinedFormulasSrc, /id:\s*'([^']+)'/g));
 const exampleIds = unique(collectIds(examplesSrc, /id:\s*'([^']+)'/g));
 const patternIds = unique(collectIds(examplesSrc, /id:\s*'(pattern-[^']+)'/g));
 const calculatorIds = unique(collectIds(calculatorsSrc, /id:\s*'([^']+)'/g));
@@ -41,14 +43,14 @@ const warn = (message) => {
 ensureRefs(refIds(examplesSrc, 'formulaIds'), new Set(formulaIds), 'examples.formulaIds');
 ensureRefs(refIds(examplesSrc, 'exampleIds'), new Set(exampleIds), 'patterns.exampleIds');
 ensureRefs(refIds(examplesSrc, 'calculatorIds'), new Set(calculatorIds), 'patterns.calculatorIds');
-ensureRefs(refIds(formulasSrc, 'relatedFormulaIds'), new Set(formulaIds), 'formulas.relatedFormulaIds');
+ensureRefs(refIds(combinedFormulasSrc, 'relatedFormulaIds'), new Set(formulaIds), 'formulas.relatedFormulaIds');
 ensureRefs(refIds(examAidsSrc, 'formulaIds'), new Set(formulaIds), 'examAids.formulaIds');
 ensureRefs(refIds(examAidsSrc, 'exampleIds'), new Set(exampleIds), 'examAids.exampleIds');
 ensureRefs(refIds(examAidsSrc, 'patternIds'), new Set(patternIds), 'examAids.patternIds');
 ensureRefs(refIds(examAidsSrc, 'calculatorIds'), new Set(calculatorIds), 'examAids.calculatorIds');
 
 const sourceRefs = collectIds(
-  `${formulasSrc}\n${examplesSrc}\n${examAidsSrc}`,
+  `${combinedFormulasSrc}\n${examplesSrc}\n${examAidsSrc}`,
   /sourceId:\s*'([^']+)'/g,
 );
 ensureRefs(sourceRefs, new Set(sourceIds), 'sourceId references');
