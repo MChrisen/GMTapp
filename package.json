@@ -22,19 +22,22 @@
     "qa": "npm run validate:data && npm run build && npm run offline:smoke"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "latest",
     "katex": "^0.16.45",
     "lucide-react": "latest",
     "pdfjs-dist": "^4.10.38",
     "react": "latest",
     "react-dom": "latest",
-    "typescript": "latest",
-    "vite": "latest"
+    "electron": "^35.7.5"
   },
   "devDependencies": {
     "@types/katex": "^0.16.8",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "electron": "^35.7.5"
+    "@vitejs/plugin-react": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

@@ -1,8 +1,8 @@
 # Dependencies
 node_modules/
 
-# Build output
-dist/
+# Build output — dist/ er committet så andre computere ikke skal bygge
+# Kør `npm run build` lokalt efter kodeændringer og commit dist/ igen.
 
 # Vite
 .vite/
@@ -10,6 +10,7 @@ dist/
 # Logs & local caches
 *.log
 .npm-cache/
+.gmt-npm-cache/
 .gmt-preview.log
 .gmt-preview.pid
 .gmt-desktop.log
