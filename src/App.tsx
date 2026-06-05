@@ -1334,7 +1334,7 @@ function ExamReadyChecklist({ state, compact = false }: { state: AppState; compa
     { label: 'Beregner-diagnostik', ok: passedDiagnostics, detail: diagnostics[0]?.detail ?? 'Ikke kørt' },
     { label: 'PDF-bibliotek', ok: pdfSources.length >= 15, detail: `${pdfSources.length} lokale kilder registreret` },
     { label: 'Problemguide-dækning', ok: completePatterns === problemPatterns.length, detail: `${completePatterns}/${problemPatterns.length} typer har formler og eksempler` },
-    { label: 'Desktop-app', ok: true, detail: 'Start GMT App.command — eget vindue, PDF i Preview' },
+    { label: 'Desktop-app', ok: true, detail: 'Start GMT.app — eget vindue, PDF i Preview' },
   ];
 
   return (
@@ -1369,7 +1369,7 @@ function ExamReadyChecklist({ state, compact = false }: { state: AppState; compa
       </div>
       {!compact && (
         <p className="muted small">
-          Brug <strong>Start GMT App</strong> — appen kører i et eget vindue (Electron). PDF’er åbnes i Preview.
+          Brug <strong>Start GMT.app</strong> — appen kører i et eget vindue (Electron). PDF’er åbnes i Preview.
         </p>
       )}
     </section>

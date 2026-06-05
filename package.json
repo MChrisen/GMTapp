@@ -10,6 +10,7 @@
     "sync:pdfs": "node scripts/sync-pdfs.mjs",
     "prebuild": "npm run sync:pdfs",
     "build": "tsc && vite build",
+    "start": "node scripts/start-desktop.mjs",
     "desktop": "electron .",
     "desktop:build": "npm run build && electron .",
     "preview": "vite preview --host 127.0.0.1",
