@@ -1,59 +1,42 @@
 # Sådan åbner du GMT Eksamenhjælp
 
-## Krav (alle platforme)
+## Vigtigt (Mac)
 
-1. Installer **[Node.js LTS](https://nodejs.org)** (version 20 eller nyere).
-2. Hent projektet: `git clone https://github.com/MChrisen/GMTapp.git` og åbn mappen.
+**Dobbeltklik `Start GMT.command`** i mappen **GMTapp** (efter `git clone`).
 
-Appen er **allerede bygget** i repoet (`dist/`). Du skal ikke køre build selv — kun installere Electron første gang.
+| Fil | Brug? |
+|-----|--------|
+| **Start GMT.command** | ✅ Ja — primær start |
+| **OPEN-GMT.command** | ✅ Samme (alternativt navn) |
+| **Start GMT.app** | Kun genvej — åbner `.command` i samme mappe. Virker **ikke** hvis du kun har kopieret `.app` væk fra mappen |
+
+Hvis Terminal viser `AppTranslocation` eller `No such file or directory` på `launch-gmt.sh`, har du åbnet **kun** `.app`-filen. Klon hele projektet og brug **`.command`**.
 
 ---
 
-## Mac — anbefalet
+## Trin
 
-**Dobbeltklik `Start GMT.command`**
+1. [Node.js LTS](https://nodejs.org) (v20+)
+2. `git clone https://github.com/MChrisen/GMTapp.git`
+3. Åbn mappen **GMTapp** i Finder
+4. Dobbeltklik **`Start GMT.command`**
 
-- Åbner Terminal og viser fremskridt/fejl.
-- Første start: `npm install` (2–5 min), derefter åbnes appen.
+Første gang: 2–5 min (`npm install`). Appen er allerede bygget (`dist/` i repo).
 
-Alternativ: **`Start GMT.app`** (samme resultat via Terminal).
+macOS blokerer måske første gang: **højreklik → Åbn → Åbn**.
 
-Første gang macOS blokerer måske: **højreklik → Åbn → Åbn**.
-
-### Fejlsøgning Mac
+### Fejlsøgning
 
 ```bash
-cd GMTapp   # eller mappenavn efter klon
+cd GMTapp
 npm install --omit=dev
 npm start
 ```
 
-Se log: `.gmt-launch.log` i projektmappen.
+Log: `.gmt-launch.log`
 
 ---
 
 ## Windows
 
-**Dobbeltklik `Start GMT.bat`**
-
----
-
-## Efter `git pull`
-
-Dobbeltklik `Start GMT.command` / `Start GMT.bat` igen. Ved store opdateringer kan du manuelt køre:
-
-```bash
-npm install --omit=dev
-```
-
----
-
-## Udviklere (ændrer kode)
-
-```bash
-npm install
-npm run build    # opdater dist/
-npm run desktop
-```
-
-Commit `dist/` efter build, så andre ikke skal bygge.
+Dobbeltklik **`Start GMT.bat`** i mappen GMTapp.

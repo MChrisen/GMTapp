@@ -1,14 +1,23 @@
 # GMT Eksamenhjælp
 
-Offline eksamenshjælp til GMT (formler, opgavefinder, PDF, Maple-export).
+Offline eksamenshjælp til GMT.
 
-## Start (anden computer)
+## Start på Mac
 
-1. [Installer Node.js LTS](https://nodejs.org) (v20+)
-2. `git clone https://github.com/MChrisen/GMTapp.git`
-3. **Mac:** dobbeltklik **`Start GMT.command`**
-4. **Windows:** dobbeltklik **`Start GMT.bat`**
+```bash
+git clone https://github.com/MChrisen/GMTapp.git
+```
 
-Første start installerer kun Electron (~2–5 min). Appen er allerede bygget (`dist/` ligger i repoet).
+Åbn mappen **GMTapp** → dobbeltklik **`Start GMT.command`**
 
-Detaljer og fejlsøgning: **[SÅDAN-ÅBNER-DU.md](SÅDAN-ÅBNER-DU.md)**
+> **Brug ikke kun `Start GMT.app`** uden resten af mappen — macOS flytter den midlertidigt, og så virker den ikke.
+
+## Start på Windows
+
+Dobbeltklik **`Start GMT.bat`** i mappen GMTapp.
+
+## Krav
+
+[Node.js LTS](https://nodejs.org) v20+
+
+Mere hjælp: **[SÅDAN-ÅBNER-DU.md](SÅDAN-ÅBNER-DU.md)**
