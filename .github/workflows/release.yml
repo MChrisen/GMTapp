@@ -12,7 +12,7 @@ permissions:
 jobs:
   build-mac:
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: false
     steps:
@@ -21,22 +21,12 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Build web app
-        run: npm run build
-      - name: Package Electron app (.app)
-        run: npx electron-builder --mac dir --arm64
-      - name: Create DMG
-        run: |
-          APP_PATH="release/mac-arm64/GMT Eksamenhjælp.app"
-          test -d "$APP_PATH"
-          hdiutil create \
-            -volname "GMT Eksamenhjælp" \
-            -srcfolder "$APP_PATH" \
-            -ov -format UDZO \
-            "release/GMT-Eksamenhjaelp-mac-arm64.dmg"
-          cd "release/mac-arm64" && zip -ry "../GMT-Eksamenhjaelp-mac-arm64.zip" "GMT Eksamenhjælp.app"
+      - run: npm ci
+      - run: chmod +x scripts/package-mac-release.sh
+      - name: Package Apple Silicon (M1/M2/M3)
+        run: ./scripts/package-mac-release.sh arm64
+      - name: Package Intel Mac
+        run: ./scripts/package-mac-release.sh x64
       - name: List release files
         run: ls -lh release/*.dmg release/*.zip
       - uses: actions/upload-artifact@v4
@@ -55,13 +45,25 @@ jobs:
         with:
           name: mac-installer
           path: release
-      - name: List files
-        run: ls -lh release/
+      - run: ls -lh release/
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          body: |
+            ## Mac — vælg den rigtige fil
+
+            | Din Mac | Download |
+            |---------|----------|
+            | **Apple Silicon** (M1/M2/M3) | `GMT-Eksamenhjaelp-mac-arm64.dmg` |
+            | **Intel** | `GMT-Eksamenhjaelp-mac-x64.dmg` |
+
+            Hvis DMG ikke åbner: brug **.zip**, udpak, højreklik appen → **Åbn**.
+
+            Første gang macOS advarer: **højreklik → Åbn → Åbn** (usigneret app).
           files: |
             release/GMT-Eksamenhjaelp-mac-arm64.dmg
             release/GMT-Eksamenhjaelp-mac-arm64.zip
+            release/GMT-Eksamenhjaelp-mac-x64.dmg
+            release/GMT-Eksamenhjaelp-mac-x64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

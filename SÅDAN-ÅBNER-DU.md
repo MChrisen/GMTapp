@@ -1,21 +1,37 @@
 # Sådan åbner du GMT Eksamenhjælp
 
-## Anbefalet: færdig app (ingen installation af Node)
+## 1. Download den rigtige version
 
-Hent den **færdigpakkede app** fra GitHub Releases — ikke kildekoden alene.
+[Github Releases (seneste)](https://github.com/MChrisen/GMTapp/releases/latest)
 
-1. [github.com/MChrisen/GMTapp/releases](https://github.com/MChrisen/GMTapp/releases)
-2. Mac: download `.dmg` → træk til Programmer → start **GMT Eksamenhjælp**
-3. Windows: download `.exe` → dobbeltklik
+| Din Mac | Fil |
+|---------|-----|
+| **M1 / M2 / M3** (Apple Silicon) | `GMT-Eksamenhjaelp-mac-arm64.dmg` |
+| **Intel** (ældre Mac) | `GMT-Eksamenhjaelp-mac-x64.dmg` |
 
-**Du skal ikke** køre `npm install` eller `Start GMT.command`.
+Tjek:  → Om denne Mac → **Processor** → "Apple" = arm64, "Intel" = x64.
 
----
+## 2. Installer
 
-## Kun hvis du udvikler fra kildekode
+**DMG virker ikke?** Brug **.zip** i stedet: udpak → dobbeltklik **GMT Eksamenhjælp.app**.
+
+1. Åbn `.dmg` eller udpak `.zip`
+2. Træk **GMT Eksamenhjælp** til **Programmer** (valgfrit)
+3. Start appen
+
+## 3. macOS siger appen er blokeret
+
+Usigneret app — det er normalt:
+
+1. **Højreklik** på appen → **Åbn** → **Åbn**
+2. Eller: Systemindstillinger → Privatliv og sikkerhed → **Åbn alligevel**
+
+## 4. Stadig problemer?
+
+Terminal (erstatter sti med din Downloads-mappe):
 
 ```bash
-npm install
-npm run package:mac
-open release/mac-arm64/GMT\ Eksamenhjælp.app
+xattr -cr ~/Downloads/GMT-Eksamenhjaelp-mac-*.dmg
+xattr -cr ~/Applications/GMT\ Eksamenhjælp.app
+open ~/Applications/GMT\ Eksamenhjælp.app
 ```
