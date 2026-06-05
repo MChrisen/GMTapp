@@ -12,37 +12,39 @@ permissions:
 jobs:
   build-mac:
     runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci
-      - run: npm run build && npx electron-builder --mac dmg zip --arm64
+      - name: Install dependencies
+        run: npm ci
+      - name: Build web app
+        run: npm run build
+      - name: Package Electron app (.app)
+        run: npx electron-builder --mac dir --arm64
+      - name: Create DMG
+        run: |
+          APP_PATH="release/mac-arm64/GMT Eksamenhjælp.app"
+          test -d "$APP_PATH"
+          hdiutil create \
+            -volname "GMT Eksamenhjælp" \
+            -srcfolder "$APP_PATH" \
+            -ov -format UDZO \
+            "release/GMT-Eksamenhjaelp-mac-arm64.dmg"
+          cd "release/mac-arm64" && zip -ry "../GMT-Eksamenhjaelp-mac-arm64.zip" "GMT Eksamenhjælp.app"
+      - name: List release files
+        run: ls -lh release/*.dmg release/*.zip
       - uses: actions/upload-artifact@v4
         with:
           name: mac-installer
           path: |
             release/*.dmg
             release/*.zip
-          retention-days: 90
-
-  build-win:
-    runs-on: windows-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - run: npm ci
-      - run: npm run build && npx electron-builder --win portable --x64
-      - uses: actions/upload-artifact@v4
-        with:
-          name: win-installer
-          path: release/*.exe
           retention-days: 90
 
   publish-release:
@@ -53,10 +55,13 @@ jobs:
         with:
           name: mac-installer
           path: release
+      - name: List files
+        run: ls -lh release/
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
-            release/*
+            release/GMT-Eksamenhjaelp-mac-arm64.dmg
+            release/GMT-Eksamenhjaelp-mac-arm64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
