@@ -4,9 +4,27 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.join(moduleDir, '..');
-const distDir = path.join(rootDir, 'dist');
-const indexHtml = path.join(distDir, 'index.html');
+
+function resolvePaths() {
+  if (app.isPackaged) {
+    const distDir = path.join(process.resourcesPath, 'dist');
+    return { rootDir: app.getAppPath(), distDir, indexHtml: path.join(distDir, 'index.html') };
+  }
+  const rootDir = path.join(moduleDir, '..');
+  const distDir = path.join(rootDir, 'dist');
+  return { rootDir, distDir, indexHtml: path.join(distDir, 'index.html') };
+}
+
+let rootDir;
+let distDir;
+let indexHtml;
+
+function refreshPaths() {
+  const paths = resolvePaths();
+  rootDir = paths.rootDir;
+  distDir = paths.distDir;
+  indexHtml = paths.indexHtml;
+}
 const APP_SCHEME = 'gmt';
 
 const isPdfUrl = (url) => /\.pdf(?:[#?]|$)/i.test(url);
@@ -131,6 +149,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    refreshPaths();
     registerAppProtocol();
     createWindow();
     app.on('activate', () => {

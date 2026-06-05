@@ -2,6 +2,8 @@
   "name": "gmt-exam-app",
   "private": true,
   "version": "0.1.0",
+  "description": "GMT Eksamenhjælp — offline eksamensapp",
+  "author": "GMT",
   "type": "module",
   "main": "electron/main.mjs",
   "scripts": {
@@ -10,9 +12,10 @@
     "sync:pdfs": "node scripts/sync-pdfs.mjs",
     "prebuild": "npm run sync:pdfs",
     "build": "tsc && vite build",
-    "start": "node scripts/start-desktop.mjs",
     "desktop": "electron .",
-    "desktop:build": "npm run build && electron .",
+    "package": "npm run build && electron-builder",
+    "package:mac": "npm run build && electron-builder --mac dmg zip",
+    "package:win": "npm run build && electron-builder --win portable nsis",
     "preview": "vite preview --host 127.0.0.1",
     "extract:pdfs": "python3 scripts/extract_pdfs.py",
     "refresh:pdfs": "npm run sync:pdfs && npm run extract:pdfs",
@@ -26,18 +29,63 @@
     "lucide-react": "latest",
     "pdfjs-dist": "^4.10.38",
     "react": "latest",
-    "react-dom": "latest",
-    "electron": "^35.7.5"
+    "react-dom": "latest"
   },
   "devDependencies": {
     "@types/katex": "^0.16.8",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "latest",
+    "electron": "^35.7.5",
+    "electron-builder": "^25.1.8",
     "typescript": "latest",
     "vite": "latest"
   },
-  "engines": {
-    "node": ">=20"
+  "build": {
+    "appId": "dk.gmt.exam-helper",
+    "productName": "GMT Eksamenhjælp",
+    "copyright": "Copyright © 2026 GMT",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist",
+        "to": "dist",
+        "filter": ["**/*"]
+      }
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.education",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["arm64", "x64"]
+        }
+      ],
+      "artifactName": "GMT-Eksamenhjaelp-${os}-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "GMT-Eksamenhjaelp-${os}-${arch}.${ext}"
+    },
+    "dmg": {
+      "title": "GMT Eksamenhjælp"
+    }
   }
 }

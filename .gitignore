@@ -1,11 +1,12 @@
 # Dependencies
 node_modules/
 
-# Build output — dist/ er committet så andre computere ikke skal bygge
-# Kør `npm run build` lokalt efter kodeændringer og commit dist/ igen.
-
 # Vite
 .vite/
+dist/
+
+# Packaged desktop apps (byg med npm run package:mac)
+release/
 
 # Logs & local caches
 *.log
@@ -17,13 +18,9 @@ node_modules/
 .gmt-desktop.pid
 .gmt-launch.log
 
-# Environment (secrets — never commit real keys)
+# Environment
 .env
 .env.*.local
 
 # OS
 .DS_Store
-
-# Editor (optional — uncomment if you prefer not to share IDE settings)
-# .idea/
-# .vscode/
