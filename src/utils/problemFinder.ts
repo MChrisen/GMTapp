@@ -1,7 +1,7 @@
 import { overrideKeysForExamId, overrideKeysForPdfPage } from '../data/problemKeyOverrides';
 import { pastExamQuestions } from '../data/examAids';
 import { workedExamples } from '../data/examples';
-import { pdfCorpus } from '../data/pdfCorpus';
+import { indexedProblems } from '../data/problemIndex';
 import { getPdfSource } from '../data/pdfManifest';
 import type { PastExamQuestion, WorkedExample } from '../data/types';
 import { getFormulaFinderIndex, normalizeToCanonicalKey, type CanonicalVariableKey } from './formulaFinder';
@@ -253,11 +253,6 @@ const expandSelectedKeyCoverage = (selectedKey: CanonicalVariableKey): Set<Canon
   return out;
 };
 
-const isTaskLikePage = (sourceId: string, text: string): boolean => {
-  if (sourceId.startsWith('exam-')) return true;
-  return /(spørgsmål|opgave|beregn|bestem|find|udregn|vis at|eksempel|example|\?)/i.test(text);
-};
-
 function formulaKeyPool(formulaIds: string[]): Set<CanonicalVariableKey> {
   const byFormula = new Map(BASE_INDEX.formulaRecords.map((record) => [record.formulaId, record.canonicalKeys]));
   const pool = new Set<CanonicalVariableKey>();
@@ -364,31 +359,33 @@ function buildProblemIndex() {
     };
   });
 
-  const pdfTasksRaw: PdfRecord[] = [];
-
-  for (const source of pdfCorpus) {
-    const sourceMeta = getPdfSource(source.sourceId);
-    for (const page of source.pages) {
-      if (!isTaskLikePage(source.sourceId, page.text)) continue;
-      const manual = overrideKeysForPdfPage(source.sourceId, page.page);
-      const givenKeys =
-        manual ??
-        inferGivenKeys([page.text, page.keywords.join(' ')], []);
-      if (givenKeys.length === 0) continue;
-      const compactSnippet = page.text.replace(/\s+/g, ' ').trim().slice(0, 180);
-      pdfTasksRaw.push({
-        kind: 'pdf',
-        id: `${source.sourceId}#${page.page}`,
-        title: `${sourceMeta?.shortTitle ?? source.sourceId} · side ${page.page}`,
-        sourceId: source.sourceId,
-        sourceTitle: sourceMeta?.shortTitle ?? source.sourceId,
-        page: page.page,
-        snippet: compactSnippet,
-        formulaIds: [],
+  const pdfTasksRaw: PdfRecord[] = indexedProblems
+    .map((entry) => {
+      const primaryRef = entry.sourceRefs[0];
+      if (!primaryRef) return null;
+      const sourceMeta = getPdfSource(primaryRef.sourceId);
+      const manual = overrideKeysForPdfPage(primaryRef.sourceId, primaryRef.page);
+      const textBlocks = [
+        entry.title,
+        entry.summary,
+        entry.subCategory,
+        entry.mainCategory,
+      ];
+      const givenKeys = manual ?? inferGivenKeys(textBlocks, entry.formulaIds);
+      if (givenKeys.length === 0) return null;
+      return {
+        kind: 'pdf' as const,
+        id: `indexed:${entry.id}`,
+        title: `${entry.kind === 'Eksamen' ? 'Eksamen' : 'Forelæsning'} · ${entry.title}`,
+        sourceId: primaryRef.sourceId,
+        sourceTitle: sourceMeta?.shortTitle ?? primaryRef.sourceId,
+        page: primaryRef.page,
+        snippet: entry.summary.slice(0, 180),
+        formulaIds: entry.formulaIds,
         givenKeys,
-      });
-    }
-  }
+      };
+    })
+    .filter((entry): entry is PdfRecord => Boolean(entry));
 
   const pdfTasks = pdfTasksRaw;
 

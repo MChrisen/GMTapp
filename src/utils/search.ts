@@ -2,6 +2,7 @@ import { calculators } from '../data/calculators';
 import { pastExamQuestions } from '../data/examAids';
 import { problemPatterns, workedExamples } from '../data/examples';
 import { formulasWithExamples } from '../data/formulas';
+import { indexedProblems } from '../data/problemIndex';
 import { pdfCorpus } from '../data/pdfCorpus';
 import { getPdfSource } from '../data/pdfManifest';
 import type { CalculatorDefinition, Formula, ProblemPattern, WorkedExample } from '../data/types';
@@ -13,6 +14,7 @@ export type SearchResults = {
   patterns: ProblemPattern[];
   calculators: CalculatorDefinition[];
   examQuestions: typeof pastExamQuestions;
+  indexedProblems: IndexedProblemHit[];
   pdfHits: PdfHit[];
 };
 
@@ -21,6 +23,17 @@ export type PdfHit = {
   sourceTitle: string;
   page: number;
   text: string;
+};
+
+export type IndexedProblemHit = {
+  id: string;
+  kind: 'Eksamen' | 'Forelaesningseksempel';
+  title: string;
+  summary: string;
+  mainCategory: string;
+  subCategory: string;
+  sourceId: string;
+  sourcePage: number;
 };
 
 const SYNONYMS: Record<string, string[]> = {
@@ -54,6 +67,11 @@ const SYNONYMS: Record<string, string[]> = {
   impuls: ['stød', 'kollision', 'momentum', 'bevægelsesmængde'],
   bevaegelsesmaengde: ['bevægelsesmængde', 'impuls', 'momentum'],
   bevægelsesmængde: ['bevaegelsesmaengde', 'impuls', 'momentum'],
+  trisse: ['atwood', 'snor', 'masser', 'newton'],
+  atwood: ['trisse', 'snor', 'm_1', 'm_2'],
+  opgaveindeks: ['eksamen', 'forelæsning', 'eksempel', 'pdf'],
+  forelæsning: ['eksempel', 'lektion'],
+  eksamen: ['exam', 'opgave', 'navigator'],
 };
 
 const normalize = (text: string) =>
@@ -209,6 +227,42 @@ export function runSearch(query: string, options: SearchOptions = {}): SearchRes
     ],
   );
 
+  const indexedProblemEntries = rank(
+    indexedProblems,
+    groups,
+    tokens,
+    (entry) =>
+      [
+        entry.kind,
+        entry.sourceId,
+        entry.title,
+        entry.summary,
+        entry.mainCategory,
+        entry.subCategory,
+        entry.patternIds.join(' '),
+        entry.formulaIds.join(' '),
+        entry.exampleIds.join(' '),
+        entry.sourceRefs.map((ref) => `${ref.sourceId} ${ref.page} ${ref.label ?? ''}`).join(' '),
+      ].join(' '),
+    [
+      { text: (entry) => entry.title, weight: 5 },
+      { text: (entry) => `${entry.mainCategory} ${entry.subCategory}`, weight: 4 },
+      { text: (entry) => entry.summary, weight: 3 },
+      { text: (entry) => entry.sourceId, weight: 2 },
+    ],
+  );
+
+  const indexedProblemHits: IndexedProblemHit[] = indexedProblemEntries.map((entry) => ({
+    id: entry.id,
+    kind: entry.kind,
+    title: entry.title,
+    summary: entry.summary,
+    mainCategory: entry.mainCategory,
+    subCategory: entry.subCategory,
+    sourceId: entry.sourceId,
+    sourcePage: entry.sourceRefs[0]?.page ?? 1,
+  }));
+
   const pdfHits: PdfHit[] =
     trimmed && options.includePdfHits
       ? pdfCorpus
@@ -248,6 +302,7 @@ export function runSearch(query: string, options: SearchOptions = {}): SearchRes
     patterns,
     calculators: calculatorMatches,
     examQuestions,
+    indexedProblems: indexedProblemHits,
     pdfHits,
   };
 }
@@ -259,6 +314,7 @@ export function totalCount(results: SearchResults): number {
     results.patterns.length +
     results.calculators.length +
     results.examQuestions.length +
+    results.indexedProblems.length +
     results.pdfHits.length
   );
 }

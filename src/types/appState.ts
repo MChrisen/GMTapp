@@ -22,6 +22,7 @@ export type AppState = {
   selectCalculator: (id: string) => void;
   selectPattern: (id: string) => void;
   selectExamQuestion: (id: string) => void;
+  openProblemIndex: (sourceId?: string, page?: number) => void;
   selectedFormulaId: string;
   selectedExampleId: string;
   selectedCalculatorId: string;

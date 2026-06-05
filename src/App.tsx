@@ -24,7 +24,14 @@ import { calculatorById, calculators } from './data/calculators';
 import { pastExamQuestions, stuckCues, supplementalNumericExamples } from './data/examAids';
 import { exampleById, patternById, problemPatterns, workedExamples } from './data/examples';
 import { formulaById, formulasWithExamples } from './data/formulas';
-import { indexedProblemCategories, indexedProblemClusters, indexedTaskCount } from './data/problemIndex';
+import {
+  indexedProblemCount,
+  indexedProblemMainCategories,
+  indexedProblems,
+  indexedProblemsForSubcategory,
+  indexedProblemSubcategories,
+} from './data/problemIndex';
+import type { IndexedProblemMainCategory } from './data/problemIndex';
 import { pdfCorpus } from './data/pdfCorpus';
 import { CONSTANT_CATEGORIES, PHYSICAL_CONSTANTS, SUBSTANCE_PROPERTIES } from './data/constants';
 import type { PhysicalConstant } from './data/constants';
@@ -525,6 +532,17 @@ function App() {
     [examMode],
   );
 
+  const openProblemIndex = useCallback(
+    (sourceId?: string, page?: number) => {
+      pushHistory();
+      setViewRaw('problems');
+      setProblemsMode('index');
+      setIsSearchOpen(false);
+      if (sourceId) openPdf(sourceId, page ?? 1);
+    },
+    [openPdf, pushHistory],
+  );
+
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
       const anchor = (event.target as HTMLElement | null)?.closest('a[href*=".pdf"]') as HTMLAnchorElement | null;
@@ -620,6 +638,7 @@ function App() {
     selectCalculator,
     selectPattern,
     selectExamQuestion,
+    openProblemIndex,
     selectedFormulaId,
     selectedExampleId,
     selectedCalculatorId,
@@ -666,8 +685,8 @@ function App() {
           <div>
             <h1>GMT Eksamenhjælp</h1>
             <p className="chrome-tagline">
-              Offline · {formulasWithExamples.length} formler · {problemPatterns.length} problemtyper · {indexedTaskCount}{' '}
-              indekserede opgaver · {pdfSources.length} PDF-kilder
+              Offline · {formulasWithExamples.length} formler · {problemPatterns.length} problemtyper · {indexedProblemCount}{' '}
+              indekserede opgaver/eksempler · {pdfSources.length} PDF-kilder
             </p>
           </div>
         </div>
@@ -749,7 +768,7 @@ function App() {
                     aria-expanded={hasQuery && isSearchOpen}
                     aria-controls="search-results-panel"
                     aria-autocomplete="list"
-                    aria-label="Søg i formler, guider, beregnere og PDF"
+                    aria-label="Søg i formler, guider, opgaveindeks, beregnere og PDF"
                     onChange={(event) => {
                       const next = event.target.value;
                       setQuery(next);
@@ -762,7 +781,7 @@ function App() {
                     onBlur={() => {
                       window.setTimeout(() => setSearchFocused(false), 120);
                     }}
-                    placeholder="Søg: pV, skråplan, Carnot, moment, idealgas …  (⌘K)"
+                    placeholder="Søg: trisse, pV, Carnot, moment, idealgas …  (⌘K)"
                     autoComplete="off"
                     spellCheck={false}
                   />
@@ -1011,11 +1030,26 @@ function App() {
 }
 
 function UniversalSearchResults({ state }: { state: AppState }) {
-  const { query, selectFormula, selectExample, selectCalculator, selectPattern, selectExamQuestion, searchResults: results } = state;
+  const {
+    query,
+    selectFormula,
+    selectExample,
+    selectCalculator,
+    selectPattern,
+    selectExamQuestion,
+    openProblemIndex,
+    searchResults: results,
+  } = state;
   const [activeIndex, setActiveIndex] = useState(0);
   const bestMatch =
     results.examQuestions[0]
       ? { label: 'Eksamen Navigator', title: `${results.examQuestions[0].year}: ${results.examQuestions[0].title}`, action: () => selectExamQuestion(results.examQuestions[0].id) }
+      : results.indexedProblems[0]
+        ? {
+            label: 'Opgaveindeks',
+            title: `${results.indexedProblems[0].title} (${results.indexedProblems[0].sourceId} side ${results.indexedProblems[0].sourcePage})`,
+            action: () => openProblemIndex(results.indexedProblems[0].sourceId, results.indexedProblems[0].sourcePage),
+          }
       : results.patterns[0]
         ? { label: 'Problemguide', title: results.patterns[0].title, action: () => selectPattern(results.patterns[0].id) }
         : results.formulas[0]
@@ -1033,8 +1067,25 @@ function UniversalSearchResults({ state }: { state: AppState }) {
       ...results.calculators.slice(0, 6).map((calculator) => ({ id: calculator.id, action: () => selectCalculator(calculator.id) })),
       ...results.examples.slice(0, 6).map((example) => ({ id: example.id, action: () => selectExample(example.id) })),
       ...results.examQuestions.slice(0, 6).map((question) => ({ id: question.id, action: () => selectExamQuestion(question.id) })),
+      ...results.indexedProblems
+        .slice(0, 6)
+        .map((entry) => ({ id: entry.id, action: () => openProblemIndex(entry.sourceId, entry.sourcePage) })),
     ],
-    [bestMatch, results.calculators, results.examQuestions, results.examples, results.formulas, results.patterns, selectCalculator, selectExamQuestion, selectExample, selectFormula, selectPattern],
+    [
+      bestMatch,
+      openProblemIndex,
+      results.calculators,
+      results.examQuestions,
+      results.examples,
+      results.formulas,
+      results.indexedProblems,
+      results.patterns,
+      selectCalculator,
+      selectExamQuestion,
+      selectExample,
+      selectFormula,
+      selectPattern,
+    ],
   );
 
   useEffect(() => {
@@ -1079,7 +1130,8 @@ function UniversalSearchResults({ state }: { state: AppState }) {
         <h2>Resultater for &ldquo;{query}&rdquo;</h2>
         <span className="muted small">
           {results.formulas.length} formler · {results.patterns.length} problemtyper · {results.calculators.length} beregnere ·{' '}
-          {results.examples.length} eksempler · {results.examQuestions.length} eksamensmatch · {results.pdfHits.length} PDF-træf
+          {results.examples.length} eksempler · {results.examQuestions.length} eksamensmatch · {results.indexedProblems.length}{' '}
+          opgaveindeks-hits · {results.pdfHits.length} PDF-træf
           {keyboardTargets.length > 0 && (
             <> · <kbd>↑</kbd>/<kbd>↓</kbd> + <kbd>Enter</kbd> vælger</>
           )}
@@ -1156,6 +1208,29 @@ function UniversalSearchResults({ state }: { state: AppState }) {
               </header>
               <small><HighlightedText text={question.cue} query={query} /></small>
               <small className="muted"><HighlightedText text={question.firstMove} query={query} /></small>
+            </button>
+          ))}
+        </ResultGroup>
+
+        <ResultGroup title="Opgaveindeks" count={results.indexedProblems.length}>
+          {results.indexedProblems.slice(0, 6).map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              className={`result-card${kbClass(ki++)}`}
+              onClick={() => openProblemIndex(entry.sourceId, entry.sourcePage)}
+            >
+              <header>
+                <strong><HighlightedText text={entry.title} query={query} /></strong>
+                <span className="tag">{entry.kind === 'Eksamen' ? 'Eksamen' : 'Forelæsning'}</span>
+              </header>
+              <small>
+                <HighlightedText
+                  text={`${entry.mainCategory} · ${entry.subCategory} · ${entry.sourceId} side ${entry.sourcePage}`}
+                  query={query}
+                />
+              </small>
+              <small className="muted"><HighlightedText text={entry.summary} query={query} /></small>
             </button>
           ))}
         </ResultGroup>
@@ -1911,7 +1986,7 @@ function FormulaFinder({ state }: { state: AppState }) {
                 </button>
               ) : (
                 <button type="button" onClick={() => state.openPdf(topProblem.sourceId, topProblem.page)}>
-                  Se lignende PDF-opgave
+                  Se lignende opgaveindeks-post
                 </button>
               ))}
           </div>
@@ -1997,7 +2072,7 @@ function FormulaFinder({ state }: { state: AppState }) {
               { id: 'all', label: `Alle (${problemMatches.length})` },
               { id: 'exam', label: `Eksamen (${problemMatches.filter((entry) => entry.kind === 'exam').length})` },
               { id: 'example', label: `Eksempler (${problemMatches.filter((entry) => entry.kind === 'example').length})` },
-              { id: 'pdf', label: `PDF (${problemMatches.filter((entry) => entry.kind === 'pdf').length})` },
+              { id: 'pdf', label: `Opgaveindeks (${problemMatches.filter((entry) => entry.kind === 'pdf').length})` },
             ] as const
           ).map((scope) => (
             <button
@@ -2025,7 +2100,7 @@ function FormulaFinder({ state }: { state: AppState }) {
                 ? `${match.year} · Eksamen`
                 : match.kind === 'example'
                   ? `Eksempel · ${exampleById(match.id)?.pattern ?? match.pattern}`
-                  : `PDF-opgave · ${match.sourceTitle}`;
+                  : `Opgaveindeks · ${match.sourceTitle}`;
             const cueText =
               match.kind === 'exam'
                 ? examQuestion?.cue
@@ -2119,7 +2194,7 @@ function FormulaFinder({ state }: { state: AppState }) {
                   <article key={`near-${match.kind}-${match.id}`} className="problem-match-card near">
                     <header>
                       <strong>{match.title}</strong>
-                      <span className="tag">{match.kind === 'exam' ? `${match.year} · Eksamen` : match.kind === 'example' ? 'Eksempel' : 'PDF-opgave'}</span>
+                      <span className="tag">{match.kind === 'exam' ? `${match.year} · Eksamen` : match.kind === 'example' ? 'Eksempel' : 'Opgaveindeks'}</span>
                     </header>
                     <div className="match-badges">
                       <span className="badge badge-out">Match: {match.similarityPercent}%</span>
@@ -2955,17 +3030,20 @@ function ProblemPatterns({
 
 function ProblemIndexView({ state }: { state: AppState }) {
   const query = state.query.trim().toLowerCase();
-  const filtered = useMemo(() => {
-    if (!query) return indexedProblemClusters;
-    return indexedProblemClusters.filter((cluster) => {
+  const source = useMemo(() => {
+    if (!query) return indexedProblems;
+    return indexedProblems.filter((entry) => {
       const haystack = [
-        cluster.title,
-        cluster.summary,
-        cluster.category,
-        cluster.patternIds.join(' '),
-        cluster.formulaIds.join(' '),
-        cluster.exampleIds.join(' '),
-        cluster.taskLists.flatMap((list) => list.taskCodes).join(' '),
+        entry.kind,
+        entry.sourceId,
+        entry.title,
+        entry.summary,
+        entry.mainCategory,
+        entry.subCategory,
+        entry.patternIds.join(' '),
+        entry.formulaIds.join(' '),
+        entry.exampleIds.join(' '),
+        entry.sourceRefs.map((ref) => `${ref.sourceId} ${ref.page} ${ref.label ?? ''}`).join(' '),
       ]
         .join(' ')
         .toLowerCase();
@@ -2973,111 +3051,134 @@ function ProblemIndexView({ state }: { state: AppState }) {
     });
   }, [query]);
 
-  const [selectedClusterId, setSelectedClusterId] = useState(indexedProblemClusters[0]?.id ?? '');
+  type ProblemSubgroup = {
+    key: string;
+    mainCategory: IndexedProblemMainCategory;
+    subCategory: string;
+    entries: typeof indexedProblems;
+  };
+
+  const grouped = useMemo(() => {
+    return Object.fromEntries(
+      indexedProblemMainCategories.map((mainCategory) => [
+        mainCategory,
+        indexedProblemSubcategories(mainCategory, source).map((subCategory) => ({
+          key: `${mainCategory}::${subCategory}`,
+          mainCategory,
+          subCategory,
+          entries: indexedProblemsForSubcategory(mainCategory, subCategory, source),
+        })),
+      ]),
+    ) as Record<IndexedProblemMainCategory, ProblemSubgroup[]>;
+  }, [source]);
+
+  const flatGroups = useMemo(() => indexedProblemMainCategories.flatMap((mainCategory) => grouped[mainCategory]), [grouped]);
+  const [selectedGroupKey, setSelectedGroupKey] = useState(flatGroups[0]?.key ?? '');
 
   useEffect(() => {
-    if (!filtered.length) return;
-    if (!filtered.some((cluster) => cluster.id === selectedClusterId)) {
-      setSelectedClusterId(filtered[0]!.id);
+    if (!flatGroups.length) {
+      if (selectedGroupKey) setSelectedGroupKey('');
+      return;
     }
-  }, [filtered, selectedClusterId]);
+    if (!flatGroups.some((group) => group.key === selectedGroupKey)) {
+      setSelectedGroupKey(flatGroups[0]!.key);
+    }
+  }, [flatGroups, selectedGroupKey]);
 
-  const selectedCluster =
-    filtered.find((cluster) => cluster.id === selectedClusterId) ??
-    filtered[0] ??
-    indexedProblemClusters.find((cluster) => cluster.id === selectedClusterId) ??
-    indexedProblemClusters[0];
+  const selectedGroup = flatGroups.find((group) => group.key === selectedGroupKey) ?? flatGroups[0];
 
-  if (!selectedCluster) {
+  if (!selectedGroup) {
     return (
       <section className="card detail">
-        <p className="muted small">Ingen indekserede opgaver fundet endnu.</p>
+        <p className="muted small">
+          {query
+            ? 'Ingen opgaver eller forelaesnings-eksempler matcher din søgning.'
+            : 'Ingen indekserede opgaver fundet endnu.'}
+        </p>
       </section>
     );
   }
 
-  const grouped = useMemo(() => {
-    const source = filtered.length ? filtered : indexedProblemClusters;
-    return Object.fromEntries(
-      indexedProblemCategories.map((category) => [category, source.filter((cluster) => cluster.category === category)]),
-    ) as Record<(typeof indexedProblemCategories)[number], typeof indexedProblemClusters>;
-  }, [filtered]);
+  const linkedPatternIds = Array.from(new Set(selectedGroup.entries.flatMap((entry) => entry.patternIds)));
+  const linkedFormulaIds = Array.from(new Set(selectedGroup.entries.flatMap((entry) => entry.formulaIds)));
+  const linkedExampleIds = Array.from(new Set(selectedGroup.entries.flatMap((entry) => entry.exampleIds)));
 
-  const linkedPatterns = selectedCluster.patternIds
+  const linkedPatterns = linkedPatternIds
     .map((id) => patternById(id))
     .filter((entry): entry is ProblemPattern => Boolean(entry));
-  const linkedFormulas = selectedCluster.formulaIds
+  const linkedFormulas = linkedFormulaIds
     .map((id) => formulaById(id))
     .filter((entry): entry is Formula => Boolean(entry));
-  const linkedExamples = selectedCluster.exampleIds
+  const linkedExamples = linkedExampleIds
     .map((id) => exampleById(id))
     .filter((entry): entry is WorkedExample => Boolean(entry));
-  const clusterTaskCount = selectedCluster.taskLists.reduce((sum, list) => sum + list.taskCodes.length, 0);
 
   return (
     <div className="split">
       <aside className="list-panel">
-        {indexedProblemCategories.map((category) => (
-          <div key={category} className="list-category-block">
-            <h3 className="category-heading">
-              {category}
-              <span className="category-count">{grouped[category].length}</span>
-            </h3>
-            {grouped[category].map((cluster) => (
-              <button
-                key={cluster.id}
-                className={cluster.id === selectedCluster.id ? 'active item' : 'item'}
-                type="button"
-                onClick={() => setSelectedClusterId(cluster.id)}
-              >
-                <span>{cluster.title}</span>
-                <small>{cluster.taskLists.reduce((sum, list) => sum + list.taskCodes.length, 0)} opgaver</small>
-              </button>
-            ))}
-          </div>
-        ))}
+        {indexedProblemMainCategories.map((mainCategory) => {
+          const groups = grouped[mainCategory];
+          if (!groups.length) return null;
+          const mainCount = groups.reduce((sum, group) => sum + group.entries.length, 0);
+          return (
+            <div key={mainCategory} className="list-category-block">
+              <h3 className="category-heading">
+                {mainCategory}
+                <span className="category-count">{mainCount}</span>
+              </h3>
+              {groups.map((group) => (
+                <button
+                  key={group.key}
+                  className={group.key === selectedGroup.key ? 'active item' : 'item'}
+                  type="button"
+                  onClick={() => setSelectedGroupKey(group.key)}
+                >
+                  <span>{group.subCategory}</span>
+                  <small>{group.entries.length} opgaver/eksempler</small>
+                </button>
+              ))}
+            </div>
+          );
+        })}
       </aside>
 
       <section className="card detail pattern-detail">
         <header className="detail-head">
           <div className="detail-heading">
             <p className="detail-eyebrow">
-              <span className="category-pill">{selectedCluster.category}</span>
-              <span className="detail-topic">PDF-opgaveindeks</span>
+              <span className="category-pill">{selectedGroup.mainCategory}</span>
+              <span className="detail-topic">{selectedGroup.subCategory}</span>
             </p>
-            <h2>{selectedCluster.title}</h2>
+            <h2>Opgaver fra eksamen + eksempler fra forelaesning</h2>
             <p className="muted small">
-              {clusterTaskCount} opgaver indekseret i denne gruppe · {indexedTaskCount} totalt
+              {selectedGroup.entries.length} i denne underkategori · {indexedProblemCount} totalt i indekset
             </p>
           </div>
         </header>
 
         <section className="subcard">
-          <h3>Gruppering</h3>
-          <p>{selectedCluster.summary}</p>
-          <p className="muted small">Kun opgaver fra de lokale PDF-kilder er medtaget i dette indeks.</p>
+          <h3>Konkrete opgaver og eksempler</h3>
+          <p className="muted small">
+            Hver post linker direkte til PDF-siden hvor opgaven/eksemplet staar.
+          </p>
+          <div className="pattern-grid">
+            {selectedGroup.entries.map((entry) => (
+              <section key={entry.id} className="subcard">
+                <p className="detail-eyebrow">
+                  <span className="category-pill">{entry.kind === 'Eksamen' ? 'Eksamen' : 'Forelaesning'}</span>
+                  <span className="detail-topic">{entry.sourceId}</span>
+                </p>
+                <h4>{entry.title}</h4>
+                <p className="muted small">{entry.summary}</p>
+                <SourceLinks refs={entry.sourceRefs} state={state} />
+              </section>
+            ))}
+          </div>
         </section>
-
-        <div className="pattern-grid">
-          {selectedCluster.taskLists.map((list) => (
-            <section key={`${selectedCluster.id}-${list.level}`} className="subcard">
-              <h3>
-                {list.level} <span className="category-count">{list.taskCodes.length}</span>
-              </h3>
-              <div className="pill-row">
-                {list.taskCodes.map((code) => (
-                  <span key={`${selectedCluster.id}-${list.level}-${code}`} className="tag">
-                    {code}
-                  </span>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
 
         {(linkedPatterns.length > 0 || linkedFormulas.length > 0 || linkedExamples.length > 0) && (
           <section className="subcard connections">
-            <h3>Forbundet</h3>
+            <h3>Forbundet teori og eksempler</h3>
             {linkedPatterns.length > 0 && (
               <div className="connection-block">
                 <h4>Overordnede opgavetyper</h4>
@@ -3093,11 +3194,11 @@ function ProblemIndexView({ state }: { state: AppState }) {
 
             {linkedFormulas.length > 0 && (
               <div className="connection-block">
-                <h4>Kerneformler i gruppen</h4>
+                <h4>Kerneformler i underkategorien</h4>
                 <div className="related-formula-grid">
                   {linkedFormulas.map((formula) => (
                     <button
-                      key={`${selectedCluster.id}-${formula.id}`}
+                      key={`${selectedGroup.key}-${formula.id}`}
                       type="button"
                       className="related-formula-card"
                       onClick={() => state.selectFormula(formula.id)}
@@ -3112,11 +3213,11 @@ function ProblemIndexView({ state }: { state: AppState }) {
 
             {linkedExamples.length > 0 && (
               <div className="connection-block">
-                <h4>Synlige eksempler fra PDF</h4>
+                <h4>Supplerende worked examples i appen</h4>
                 <div className="example-list">
                   {linkedExamples.map((example) => (
                     <button
-                      key={`${selectedCluster.id}-${example.id}`}
+                      key={`${selectedGroup.key}-${example.id}`}
                       type="button"
                       className="example-card"
                       onClick={() => state.selectExample(example.id)}
@@ -3133,11 +3234,6 @@ function ProblemIndexView({ state }: { state: AppState }) {
             )}
           </section>
         )}
-
-        <section className="subcard">
-          <h3>PDF-kildesider for dette opgavecluster</h3>
-          <SourceLinks refs={selectedCluster.sourceRefs} state={state} />
-        </section>
       </section>
     </div>
   );
