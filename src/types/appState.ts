@@ -1,0 +1,47 @@
+import type { RefObject } from 'react';
+import type { SearchResults } from '../utils/search';
+
+export type View = 'formulas' | 'problems' | 'reference';
+export type FormulasMode = 'cards' | 'finder' | 'advancedFinder' | 'calculators' | 'sheet';
+export type ProblemsMode = 'patterns' | 'examples' | 'exam';
+export type ReferenceMode = 'tools' | 'sources';
+
+export type AppState = {
+  view: View;
+  setView: (view: View) => void;
+  canGoBack: boolean;
+  goBack: () => void;
+  examMode: boolean;
+  query: string;
+  setQuery: (value: string) => void;
+  includePdfInSearch: boolean;
+  setIncludePdfInSearch: (value: boolean) => void;
+  searchResults: SearchResults;
+  selectFormula: (id: string) => void;
+  selectExample: (id: string) => void;
+  selectCalculator: (id: string) => void;
+  selectPattern: (id: string) => void;
+  selectExamQuestion: (id: string) => void;
+  selectedFormulaId: string;
+  selectedExampleId: string;
+  selectedCalculatorId: string;
+  selectedPatternId: string;
+  selectedExamQuestionId: string;
+  searchInputRef: RefObject<HTMLInputElement | null>;
+  formulasMode: FormulasMode;
+  setFormulasMode: (mode: FormulasMode) => void;
+  problemsMode: ProblemsMode;
+  setProblemsMode: (mode: ProblemsMode) => void;
+  referenceMode: ReferenceMode;
+  setReferenceMode: (mode: ReferenceMode) => void;
+  openPdf: (sourceId: string, page?: number) => void;
+  pdfDocked: boolean;
+  setPdfDocked: (value: boolean) => void;
+  finderPrefillKeys: string[] | null;
+  openFinderWithKeys: (keys: string[]) => void;
+  clearFinderPrefill: () => void;
+  showBookmarksOnly: boolean;
+  setShowBookmarksOnly: (value: boolean) => void;
+  darkMode: boolean;
+  setDarkMode: (value: boolean) => void;
+};

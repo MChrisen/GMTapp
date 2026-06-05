@@ -1,0 +1,86 @@
+/* Dark theme overrides — loaded via .theme-dark on html / .app-shell */
+
+html.theme-dark,
+.app-shell.theme-dark {
+  color-scheme: dark;
+
+  --bg: #0f1419;
+  --bg-tint-a: rgba(40, 80, 160, 0.12);
+  --bg-tint-b: rgba(80, 60, 140, 0.1);
+  --bg-tint-c: rgba(50, 120, 160, 0.08);
+
+  --window: rgba(22, 27, 34, 0.92);
+  --window-strong: rgba(28, 33, 40, 0.98);
+  --titlebar: rgba(22, 27, 34, 0.85);
+  --sidebar: rgba(18, 22, 28, 0.9);
+  --sidebar-strong: rgba(24, 28, 36, 0.95);
+  --surface: #1c2128;
+  --surface-quiet: #161b22;
+  --surface-quieter: #12161c;
+  --surface-tint: rgba(88, 166, 255, 0.08);
+
+  --text: #e6edf3;
+  --text-2: #c9d1d9;
+  --muted: #8b949e;
+  --muted-2: #6e7681;
+  --on-accent: #ffffff;
+
+  --border: rgba(255, 255, 255, 0.1);
+  --border-soft: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --border-accent: rgba(88, 166, 255, 0.4);
+
+  --accent: #58a6ff;
+  --accent-deep: #388bfd;
+  --accent-soft: rgba(88, 166, 255, 0.15);
+  --accent-soft-strong: rgba(88, 166, 255, 0.25);
+  --accent-2: #a371f7;
+  --green: #3fb950;
+  --green-soft: rgba(63, 185, 80, 0.15);
+  --warn: #f85149;
+  --warn-soft: rgba(248, 81, 73, 0.12);
+  --gold: #d29922;
+  --gold-soft: rgba(210, 153, 34, 0.12);
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 6px 18px rgba(0, 0, 0, 0.35);
+  --shadow-3: 0 18px 48px rgba(0, 0, 0, 0.45);
+  --shadow-window: 0 30px 80px rgba(0, 0, 0, 0.5);
+
+  --btn-bg: linear-gradient(180deg, #2b313b, #232831);
+  --btn-bg-hover: linear-gradient(180deg, #323843, #2a303a);
+  --btn-bg-active: linear-gradient(180deg, #20252d, #1b2027);
+  --btn-border: rgba(255, 255, 255, 0.16);
+  --input-bg: #161b22;
+  --focus-ring: rgba(88, 166, 255, 0.45);
+}
+
+html.theme-dark body,
+.app-shell.theme-dark {
+  background:
+    radial-gradient(circle at 8% -2%, var(--bg-tint-a), transparent 32rem),
+    radial-gradient(circle at 92% -4%, var(--bg-tint-b), transparent 30rem),
+    radial-gradient(circle at 50% 110%, var(--bg-tint-c), transparent 36rem),
+    linear-gradient(180deg, #11161d 0%, var(--bg) 60%, #0b0f14 100%);
+}
+
+html.theme-dark .app-chrome {
+  background: linear-gradient(180deg, rgba(28, 33, 40, 0.92), rgba(22, 27, 34, 0.82));
+}
+
+html.theme-dark button.primary {
+  background: linear-gradient(180deg, #4d9bff, #2f81f0);
+  color: #ffffff;
+}
+
+html.theme-dark .nav-rail button.active,
+html.theme-dark button.active {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+html.theme-dark .search-hit-mark,
+html.theme-dark mark {
+  background: rgba(210, 153, 34, 0.3);
+  color: var(--text);
+}

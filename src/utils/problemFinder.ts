@@ -1,3 +1,4 @@
+import { overrideKeysForExamId, overrideKeysForPdfPage } from '../data/problemKeyOverrides';
 import { pastExamQuestions } from '../data/examAids';
 import { workedExamples } from '../data/examples';
 import { pdfCorpus } from '../data/pdfCorpus';
@@ -183,6 +184,9 @@ const HIERARCHICAL_PARENT_ALIASES: Record<string, CanonicalVariableKey[]> = {
   V: ['V_i', 'V_f', 'Delta_V'],
   Q: ['Q_h', 'Q_c'],
   R: ['R_J', 'R_air', 'R_total'],
+  n: ['n_i', 'n_f'],
+  W: ['W_nc', 'W_net'],
+  a: ['a_x', 'a_y'],
 };
 
 const normalizeToken = (raw: string) =>
@@ -341,8 +345,10 @@ function buildProblemIndex() {
       extraPool,
     );
     const overlapWithExamples = inferred.filter((key) => extraPool.has(key));
-    const givenKeys =
-      extraPool.size > 0 && overlapWithExamples.length >= 2
+    const manual = overrideKeysForExamId(question.id);
+    const givenKeys = manual?.length
+      ? manual
+      : extraPool.size > 0 && overlapWithExamples.length >= 2
         ? overlapWithExamples
         : extraPool.size > 0 && inferred.length > extraPool.size + 2
           ? [...extraPool].slice(0, 6)
@@ -364,7 +370,10 @@ function buildProblemIndex() {
     const sourceMeta = getPdfSource(source.sourceId);
     for (const page of source.pages) {
       if (!isTaskLikePage(source.sourceId, page.text)) continue;
-      const givenKeys = inferGivenKeys([page.text, page.keywords.join(' ')], []);
+      const manual = overrideKeysForPdfPage(source.sourceId, page.page);
+      const givenKeys =
+        manual ??
+        inferGivenKeys([page.text, page.keywords.join(' ')], []);
       if (givenKeys.length === 0) continue;
       const compactSnippet = page.text.replace(/\s+/g, ' ').trim().slice(0, 180);
       pdfTasksRaw.push({
@@ -398,6 +407,20 @@ export function getExampleGivenKeys(exampleId: WorkedExample['id']): CanonicalVa
 
 export function getExamGivenKeys(questionId: PastExamQuestion['id']): CanonicalVariableKey[] {
   return INDEX.exams.find((entry) => entry.id === questionId)?.givenKeys ?? [];
+}
+
+export function explainProblemMatch(match: ProblemMatch): string {
+  if (match.missingSelectedKeys.length > 0) {
+    return 'Delvist match — nogle valgte variable findes ikke i opgaven.';
+  }
+  if (match.extraTaskKeys.length > 0) {
+    return `Opgaven har de valgte variable, men også ${match.extraTaskKeys.length} ekstra i teksten.`;
+  }
+  const hierarchyUsed = match.selectedCoverageHits.some((hit) => hit.usedHierarchy);
+  if (hierarchyUsed) {
+    return 'Præcist match via parent→understøttede variable (fx m dækker m₁).';
+  }
+  return 'Præcist match på begyndelsesvariable.';
 }
 
 export function findProblemMatches(inputs: FindProblemInputs): ProblemMatch[] {

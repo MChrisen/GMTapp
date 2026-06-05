@@ -2,11 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   BookOpen,
+  Columns2,
   FlaskConical,
   LibraryBig,
+  Moon,
   Radar,
   Route,
   Search,
+  ShieldCheck,
+  Sun,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Figure } from './components/Figure';
@@ -39,16 +43,16 @@ import {
 } from './utils/formulaFinder';
 import { sourceLabel, sourceUrl } from './utils/linkResolver';
 import { buildMapleSnippet } from './utils/maple';
-import { findProblemMatches, getExampleGivenKeys, getExamGivenKeys } from './utils/problemFinder';
+import { finderPresets } from './data/finderPresets';
+import { ExamSimulator } from './features/exam/ExamSimulator';
+import { HotkeyHelp } from './components/HotkeyHelp';
+import { SidebarShortcuts } from './components/SidebarShortcuts';
+import type { AppState, FormulasMode, ProblemsMode, ReferenceMode, View } from './types/appState';
+import { buildMapleSnippetForExample } from './utils/mapleExample';
+import { explainProblemMatch, findProblemMatches, getExampleGivenKeys, getExamGivenKeys } from './utils/problemFinder';
 import type { SearchResults } from './utils/search';
 import { useBookmarks, useLocalStorage, useRecent } from './utils/storage';
 import './styles.css';
-
-type View = 'formulas' | 'problems' | 'reference';
-
-type FormulasMode = 'cards' | 'finder' | 'advancedFinder' | 'calculators' | 'sheet';
-type ProblemsMode = 'patterns' | 'examples' | 'exam';
-type ReferenceMode = 'tools' | 'sources';
 
 const FORMULAS_MODE_STORAGE_KEY = 'gmt:formulas-mode';
 const PROBLEMS_MODE_STORAGE_KEY = 'gmt:problems-mode';
@@ -161,8 +165,10 @@ function ViewHeader({
   const sectionLabel = viewSectionLabel(view, formulasMode, problemsMode, referenceMode);
   return (
     <header className="view-header">
-      {sectionLabel ? <p className="view-breadcrumb">{sectionLabel}</p> : null}
-      <h2 className="view-title">{VIEW_TITLES[view]}</h2>
+      <div className="view-header-main">
+        <h2 className="view-title">{VIEW_TITLES[view]}</h2>
+        {sectionLabel ? <span className="view-breadcrumb">{sectionLabel}</span> : null}
+      </div>
       <p className="muted small view-lead">{VIEW_LEADS[view]}</p>
     </header>
   );
@@ -370,37 +376,6 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
   );
 }
 
-type AppState = {
-  view: View;
-  setView: (view: View) => void;
-  canGoBack: boolean;
-  goBack: () => void;
-  examMode: boolean;
-  query: string;
-  setQuery: (value: string) => void;
-  includePdfInSearch: boolean;
-  setIncludePdfInSearch: (value: boolean) => void;
-  searchResults: SearchResults;
-  selectFormula: (id: string) => void;
-  selectExample: (id: string) => void;
-  selectCalculator: (id: string) => void;
-  selectPattern: (id: string) => void;
-  selectExamQuestion: (id: string) => void;
-  selectedFormulaId: string;
-  selectedExampleId: string;
-  selectedCalculatorId: string;
-  selectedPatternId: string;
-  selectedExamQuestionId: string;
-  searchInputRef: React.RefObject<HTMLInputElement | null>;
-  formulasMode: FormulasMode;
-  setFormulasMode: (mode: FormulasMode) => void;
-  problemsMode: ProblemsMode;
-  setProblemsMode: (mode: ProblemsMode) => void;
-  referenceMode: ReferenceMode;
-  setReferenceMode: (mode: ReferenceMode) => void;
-  openPdf: (sourceId: string, page?: number) => void;
-};
-
 function App() {
   const [view, setViewRaw] = useState<View>('formulas');
   const [query, setQuery] = useState('');
@@ -418,14 +393,27 @@ function App() {
   const [problemsMode, setProblemsMode] = useState<ProblemsMode>(readStoredProblemsMode);
   const [referenceMode, setReferenceMode] = useState<ReferenceMode>(readStoredReferenceMode);
   const [pdfViewer, setPdfViewer] = useState<{ sourceId: string; page: number } | null>(null);
+  const [pdfDocked, setPdfDocked] = useLocalStorage<boolean>('gmt:pdf-docked', true);
+  const [finderPrefillKeys, setFinderPrefillKeys] = useState<string[] | null>(null);
+  const [showBookmarksOnly, setShowBookmarksOnly] = useState(false);
+  const [darkMode, setDarkMode] = useLocalStorage<boolean>('gmt:dark-mode', false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const searchPopoverRef = useRef<HTMLDivElement | null>(null);
   const navHistoryRef = useRef<NavSnapshot[]>([]);
   const restoredSessionRef = useRef(false);
   const skipNextPersistRef = useRef(false);
-  const { toggle: toggleBookmark, isBookmarked } = useBookmarks();
-  const { push: pushRecentFormula } = useRecent('gmt:recent-formulas', 6);
-  const { push: pushRecentExample } = useRecent('gmt:recent-examples', 4);
+  const { toggle: toggleBookmark, isBookmarked, bookmarks } = useBookmarks();
+
+  const openFinderWithKeys = useCallback((keys: string[]) => {
+    setFinderPrefillKeys(keys);
+    setFormulasMode('finder');
+    setViewRaw('formulas');
+    setIsSearchOpen(false);
+  }, []);
+
+  const clearFinderPrefill = useCallback(() => setFinderPrefillKeys(null), []);
+  const { recent: recentFormulas, push: pushRecentFormula } = useRecent('gmt:recent-formulas', 6);
+  const { recent: recentExamples, push: pushRecentExample } = useRecent('gmt:recent-examples', 4);
 
   const snapshot = useCallback(
     (): NavSnapshot => ({
@@ -643,6 +631,15 @@ function App() {
     referenceMode,
     setReferenceMode,
     openPdf,
+    pdfDocked,
+    setPdfDocked,
+    finderPrefillKeys,
+    openFinderWithKeys,
+    clearFinderPrefill,
+    showBookmarksOnly,
+    setShowBookmarksOnly,
+    darkMode,
+    setDarkMode,
   };
 
   const selectedFormula = formulaById(selectedFormulaId) ?? formulasWithExamples[0];
@@ -652,8 +649,12 @@ function App() {
   const selectedExamQuestion =
     pastExamQuestions.find((question) => question.id === selectedExamQuestionId) ?? pastExamQuestions[0];
 
+  useEffect(() => {
+    document.documentElement.classList.toggle('theme-dark', darkMode);
+  }, [darkMode]);
+
   return (
-    <div className={`app-shell${examMode ? ' exam-mode' : ''}`}>
+    <div className={`app-shell${examMode ? ' exam-mode' : ''}${darkMode ? ' theme-dark' : ''}${pdfViewer && pdfDocked ? ' pdf-split-active' : ''}`}>
       <a className="skip-link" href="#view-stage">
         Spring til indhold
       </a>
@@ -668,15 +669,38 @@ function App() {
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          className={`exam-toggle${examMode ? ' active' : ''}`}
-          onClick={() => setExamMode((current) => !current)}
-          aria-pressed={examMode}
-          title="Bekræftelse før PDF åbnes i appen"
-        >
-          {examMode ? 'Eksamen: bekræft PDF' : 'Eksamen: direkte PDF'}
-        </button>
+        <div className="chrome-actions" role="group" aria-label="Indstillinger">
+          <button
+            type="button"
+            className={`chrome-toggle${darkMode ? ' active' : ''}`}
+            onClick={() => setDarkMode((current) => !current)}
+            aria-pressed={darkMode}
+            title={darkMode ? 'Skift til lyst tema' : 'Skift til mørkt tema'}
+          >
+            {darkMode ? <Moon size={15} aria-hidden="true" /> : <Sun size={15} aria-hidden="true" />}
+            <span>{darkMode ? 'Mørk' : 'Lys'}</span>
+          </button>
+          <button
+            type="button"
+            className={`chrome-toggle${pdfDocked ? ' active' : ''}`}
+            onClick={() => setPdfDocked((current) => !current)}
+            aria-pressed={pdfDocked}
+            title="Vis PDF ved siden af indholdet i stedet for som overlay"
+          >
+            <Columns2 size={15} aria-hidden="true" />
+            <span>{pdfDocked ? 'PDF delt' : 'PDF overlay'}</span>
+          </button>
+          <button
+            type="button"
+            className={`chrome-toggle${examMode ? ' active' : ''}`}
+            onClick={() => setExamMode((current) => !current)}
+            aria-pressed={examMode}
+            title="Kræv bekræftelse før en PDF åbnes (eksamenssikker)"
+          >
+            <ShieldCheck size={15} aria-hidden="true" />
+            <span>{examMode ? 'Bekræft PDF' : 'Eksamenstilstand'}</span>
+          </button>
+        </div>
       </header>
 
       <div className="app-frame">
@@ -697,6 +721,12 @@ function App() {
               </span>
             </button>
           ))}
+          <SidebarShortcuts
+            state={state}
+            recentFormulas={recentFormulas}
+            recentExamples={recentExamples}
+            bookmarks={bookmarks}
+          />
         </nav>
 
         <section className="content-canvas">
@@ -785,6 +815,7 @@ function App() {
             )}
           </div>
 
+          <div className={`content-body${pdfViewer && pdfDocked ? ' content-body--pdf-split' : ''}`}>
           <main className="view-stage" id="view-stage" tabIndex={-1}>
             <ViewHeader
               view={view}
@@ -905,7 +936,10 @@ function App() {
                     toggleBookmark={toggleBookmark}
                   />
                 ) : (
-                  <ExamDecoderView state={state} selectedQuestion={selectedExamQuestion} />
+                  <>
+                    <ExamDecoderView state={state} selectedQuestion={selectedExamQuestion} />
+                    <ExamSimulator state={state} />
+                  </>
                 )}
               </>
             )}
@@ -938,15 +972,27 @@ function App() {
             )}
           </main>
 
+          {pdfViewer && pdfDocked && (
+            <PdfViewer
+              key={`${pdfViewer.sourceId}-${pdfViewer.page}`}
+              docked
+              sourceId={pdfViewer.sourceId}
+              page={pdfViewer.page}
+              onClose={() => setPdfViewer(null)}
+            />
+          )}
+          </div>
+
           <footer className="hint-bar">
-            <kbd>⌘K</kbd> / <kbd>/</kbd> søg · <kbd>Esc</kbd> ryd · <kbd>Alt+1…3</kbd> skift hovedside · <kbd>Alt+←</kbd> tilbage · Alt kører offline
+            <kbd>⌘K</kbd> / <kbd>/</kbd> søg · <kbd>Esc</kbd> ryd · <kbd>Alt+1…3</kbd> hovedside · <kbd>Alt+←</kbd> tilbage · <kbd>?</kbd> genveje
           </footer>
         </section>
       </div>
 
-      {pdfViewer && (
+      {pdfViewer && !pdfDocked && (
         <PdfViewer sourceId={pdfViewer.sourceId} page={pdfViewer.page} onClose={() => setPdfViewer(null)} />
       )}
+      <HotkeyHelp />
     </div>
   );
 }
@@ -1695,6 +1741,12 @@ function FormulaFinder({ state }: { state: AppState }) {
   const [strictProblemMatch, setStrictProblemMatch] = useState(true);
   const [problemScope, setProblemScope] = useState<'all' | 'exam' | 'example' | 'pdf'>('all');
 
+  useEffect(() => {
+    if (!state.finderPrefillKeys?.length) return;
+    setGivenKeys(new Set(state.finderPrefillKeys));
+    state.clearFinderPrefill();
+  }, [state, state.finderPrefillKeys]);
+
   const selectedGivenKeys = [...givenKeys];
 
   const results = useMemo(
@@ -1786,6 +1838,22 @@ function FormulaFinder({ state }: { state: AppState }) {
           onToggle={toggleGiven}
           entryLabel={labelFor}
         />
+
+        <div className="finder-presets">
+          <span className="muted small">Hurtige valg:</span>
+          <div className="pill-row">
+            {finderPresets.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                title={preset.description}
+                onClick={() => setGivenKeys(new Set(preset.givenKeys))}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="finder-control-grid">
           <label className="finder-output">
@@ -1958,6 +2026,7 @@ function FormulaFinder({ state }: { state: AppState }) {
                   <span className="tag">{sourceLabelText}</span>
                 </header>
                 {cueText ? <p className="muted small">{cleanSnippet(cueText, 170)}</p> : null}
+                <p className="muted small match-explain">{explainProblemMatch(match)}</p>
                 <div className="match-badges">
                   <span className="badge badge-out ok">Match: {match.similarityPercent}%</span>
                   <span className="badge">Dækning: {match.coveragePercent}%</span>
@@ -2253,6 +2322,7 @@ function FormulaLibrary({
   const listFiltered = useMemo(() => {
     const q = listQuery.trim().toLowerCase();
     return globalFiltered.filter((formula) => {
+      if (state.showBookmarksOnly && !isBookmarked(formula.id)) return false;
       if (categoryFilter !== 'all' && formula.category !== categoryFilter) return false;
       if (!q) return true;
       return (
@@ -2262,7 +2332,7 @@ function FormulaLibrary({
         formula.keywords.some((k) => k.toLowerCase().includes(q))
       );
     });
-  }, [globalFiltered, categoryFilter, listQuery]);
+  }, [globalFiltered, categoryFilter, listQuery, state.showBookmarksOnly, isBookmarked]);
 
   const visibleCategories = useMemo(() => {
     if (categoryFilter !== 'all') return [categoryFilter];
@@ -2272,13 +2342,21 @@ function FormulaLibrary({
   return (
     <div className="formula-library-shell">
       <div className="library-toolbar card">
+        {state.showBookmarksOnly && (
+          <div className="library-bookmark-banner">
+            <span>Kun bogmærkede formler</span>
+            <button type="button" onClick={() => state.setShowBookmarksOnly(false)}>
+              Vis alle
+            </button>
+          </div>
+        )}
         <label className="library-search">
-          <span className="muted small">Filtrér formler i biblioteket</span>
+          <span className="sr-only">Filtrér formler i biblioteket</span>
           <input
             type="search"
             value={listQuery}
             onChange={(event) => setListQuery(event.target.value)}
-            placeholder="Søg navn, emne eller nøgleord …"
+            placeholder="Filtrér biblioteket: navn, emne eller nøgleord …"
             autoComplete="off"
           />
         </label>
@@ -2438,6 +2516,13 @@ function FormulaDetail({
         </div>
       </div>
 
+      {formula.examTip && (
+        <section className="subcard exam-tip-hero">
+          <h3>Eksamenstip</h3>
+          <p>{formula.examTip}</p>
+        </section>
+      )}
+
       <div className="formula-facts">
         <section className="subcard">
           <h3>Variabler</h3>
@@ -2505,8 +2590,11 @@ function FormulaDetail({
       )}
 
       {hasConnections && (
-        <section className="subcard connections">
-          <h3>Forbundet</h3>
+        <details className="subcard connections accordion-block">
+          <summary>
+            <h3>Forbundet</h3>
+            <span className="muted small">Relaterede formler, eksempler og eksamen</span>
+          </summary>
 
           {relatedFormulas.length > 0 && (
             <div className="connection-block">
@@ -2581,7 +2669,7 @@ function FormulaDetail({
               </div>
             </div>
           )}
-        </section>
+        </details>
       )}
     </section>
   );
@@ -2684,16 +2772,32 @@ function ProblemPatterns({
           </section>
         </div>
 
-        {selectedPattern.pitfalls && selectedPattern.pitfalls.length > 0 && (
-          <section className="subcard pitfalls">
-            <h3>Pas på</h3>
-            <ul>
+        <section className="subcard pattern-checklist no-print">
+          <div className="subcard-head">
+            <h3>Tjekliste til eksamen</h3>
+            <button type="button" className="link-button" onClick={() => window.print()}>
+              Print tjekliste
+            </button>
+          </div>
+          {selectedPattern.figureId && <Figure id={selectedPattern.figureId} title={selectedPattern.title} />}
+          <ol className="recipe numbered">
+            {selectedPattern.method.map((step, index) => (
+              <li key={`check-${step}`}>
+                <span className="step-num">{index + 1}</span>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
+          {selectedPattern.pitfalls && selectedPattern.pitfalls.length > 0 && (
+            <ul className="condition-list">
               {selectedPattern.pitfalls.map((pitfall) => (
-                <li key={pitfall}>{pitfall}</li>
+                <li key={pitfall}>
+                  <strong>Typisk fejl:</strong> {pitfall}
+                </li>
               ))}
             </ul>
-          </section>
-        )}
+          )}
+        </section>
 
         {(typicalGivenTexts.length > 0 || typicalGivenKeys.length > 0) && (
           <section className="subcard">
@@ -2706,13 +2810,18 @@ function ProblemPatterns({
               </ul>
             )}
             {typicalGivenKeys.length > 0 && (
-              <div className="pill-row variable-chip-list">
-                {typicalGivenKeys.map((key) => (
-                  <span key={`${selectedPattern.id}-${key}`} className="tag math-tag">
-                    <TexMath tex={labelForKey(key)} />
-                  </span>
-                ))}
-              </div>
+              <>
+                <div className="pill-row variable-chip-list">
+                  {typicalGivenKeys.map((key) => (
+                    <span key={`${selectedPattern.id}-${key}`} className="tag math-tag">
+                      <TexMath tex={labelForKey(key)} />
+                    </span>
+                  ))}
+                </div>
+                <button type="button" onClick={() => state.openFinderWithKeys(typicalGivenKeys)}>
+                  Find opgaver med disse variable
+                </button>
+              </>
             )}
           </section>
         )}
@@ -2943,6 +3052,7 @@ function Calculator({
     }
     if (calculator.id.includes('projectile') || calculator.id.includes('constant-acceleration')) {
       checks.push('Sørg for at g indgår med minus i y-retning og samme tid t i begge retninger.');
+      checks.push('Starthastighed kan indtastes i km/t — vælg enheden ved v₀.');
     }
     if (calculator.id.includes('orbit') || calculator.id.includes('circular')) {
       checks.push('Brug r = planetradius + højde, ikke kun højden.');
@@ -3098,6 +3208,8 @@ function ExamplesView({
   const id = `example:${selectedExample.id}`;
   const numericExample = selectedExample.numericExample ?? supplementalNumericExamples[selectedExample.id];
   const [showFigure, setShowFigure] = useState(false);
+  const [revealedStep, setRevealedStep] = useState(0);
+  const [mapleCopyStatus, setMapleCopyStatus] = useState(false);
   const finderIndex = useMemo(() => getFormulaFinderIndex(), []);
   const labelForKey = (key: string) =>
     pickerEntryLabel(finderIndex.pickerEntries, key) || finderIndex.variableMeta.get(key)?.labelLaTeX || key;
@@ -3112,7 +3224,18 @@ function ExamplesView({
 
   useEffect(() => {
     setShowFigure(false);
+    setRevealedStep(0);
   }, [selectedExample.id]);
+
+  const copyExampleMaple = useCallback(async () => {
+    try {
+      await navigator.clipboard?.writeText(buildMapleSnippetForExample(selectedExample));
+      setMapleCopyStatus(true);
+      window.setTimeout(() => setMapleCopyStatus(false), 1600);
+    } catch {
+      setMapleCopyStatus(false);
+    }
+  }, [selectedExample]);
 
   return (
     <div className="split">
@@ -3201,15 +3324,35 @@ function ExamplesView({
         )}
 
         <section className="subcard">
-          <h3>Trin for trin</h3>
+          <div className="subcard-head">
+            <h3>Trin for trin (selvtest)</h3>
+            <button type="button" onClick={copyExampleMaple}>
+              {mapleCopyStatus ? '✓ Maple kopieret' : 'Kopiér formler til Maple'}
+            </button>
+          </div>
           <ol className="recipe numbered">
-            {selectedExample.steps.map((step, index) => (
+            {selectedExample.steps.slice(0, revealedStep + 1).map((step, index) => (
               <li key={step}>
                 <span className="step-num">{index + 1}</span>
                 <span>{step}</span>
               </li>
             ))}
           </ol>
+          <div className="pill-row">
+            <button
+              type="button"
+              disabled={revealedStep >= selectedExample.steps.length - 1}
+              onClick={() => setRevealedStep((value) => Math.min(value + 1, selectedExample.steps.length - 1))}
+            >
+              Vis næste trin
+            </button>
+            <button type="button" onClick={() => setRevealedStep(selectedExample.steps.length - 1)}>
+              Vis alle trin
+            </button>
+            <button type="button" className="ghost" onClick={() => setRevealedStep(0)}>
+              Skjul igen
+            </button>
+          </div>
         </section>
 
         <section className="subcard">
@@ -3353,6 +3496,11 @@ function ExamDecoderView({
                 </span>
               ))}
             </div>
+            <div className="pill-row">
+              <button type="button" className="primary" onClick={() => state.openFinderWithKeys(givenVariableKeys)}>
+                Find lignende opgaver i finder
+              </button>
+            </div>
           </section>
         )}
         <section className="subcard">
@@ -3378,36 +3526,6 @@ function ExamDecoderView({
             ))}
           </div>
         </section>
-
-        <div className="grid auto-fit">
-          <section className="subcard">
-            <h3>Problemtype</h3>
-            <div className="pill-row">
-              {selectedQuestion.patternIds.map((id) => {
-                const pattern = patternById(id);
-                return (
-                  <button key={id} type="button" onClick={() => state.selectPattern(id)}>
-                    {pattern?.title ?? id}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          <section className="subcard">
-            <h3>Regnere</h3>
-            <div className="pill-row">
-              {selectedQuestion.calculatorIds.map((id) => {
-                const calculator = calculatorById(id);
-                return calculator ? (
-                  <button key={id} type="button" onClick={() => state.selectCalculator(id)}>
-                    {calculator.title}
-                  </button>
-                ) : null;
-              })}
-            </div>
-          </section>
-        </div>
 
         <section className="subcard">
           <h3>Formler til spørgsmålet</h3>
